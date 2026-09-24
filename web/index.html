@@ -363,7 +363,7 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .calendar-grid{display:flex;padding:0 28px;border-top:1px solid var(--hairline)}.calendar-weekday{display:none}.calendar-day{flex:1 1 0;min-width:0;min-height:88px;padding:8px;border-top:none;border-right:none;text-align:center;vertical-align:top;position:relative}.calendar-day:not(.mobile-week){display:none}.calendar-day.muted{background:var(--surface2);color:var(--ink3)}
 .calendar-day.today .calendar-date{background:var(--accent);color:#fff}.calendar-day.has-events{cursor:pointer}.calendar-day.has-events:hover{background:#f4f7ff}.calendar-day.selected{box-shadow:inset 0 -3px 0 var(--accent);background:#f4f7ff}
 .calendar-date{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;border-radius:6px;font-size:13px;font-family:var(--mono);font-weight:600}.calendar-count{display:block;margin-top:9px;font-size:11px;color:var(--accent);font-weight:600}.calendar-count.hot{color:var(--warn)}
-.calendar-events{min-width:0;padding:0 18px}.calendar-events-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.calendar-events-column{min-width:0}.calendar-events-title{padding:16px 0 10px;font-size:15px;font-weight:700;color:var(--ink)}.calendar-events-empty{padding:28px 0;color:var(--ink3);font-size:14px;border-top:1px solid var(--hairline)}.calendar-event{display:grid;grid-template-columns:54px minmax(0,1fr);border-top:1px solid var(--hairline);align-items:start;gap:12px;padding:13px 2px 14px;min-height:104px}
+.calendar-events{min-width:0;padding:0 18px}.calendar-event-tabs{display:none}.calendar-events-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.calendar-events-column{min-width:0}.calendar-events-title{padding:16px 0 10px;font-size:15px;font-weight:700;color:var(--ink)}.calendar-events-empty{padding:28px 0;color:var(--ink3);font-size:14px;border-top:1px solid var(--hairline)}.calendar-event{display:grid;grid-template-columns:54px minmax(0,1fr);border-top:1px solid var(--hairline);align-items:start;gap:12px;padding:13px 2px 14px;min-height:104px}
 .calendar-time-stack{align-self:start;font-family:var(--mono);font-weight:600;font-size:13px;line-height:1.45;min-width:0}.calendar-time-stack.published{color:var(--ok)}.calendar-time-stack:not(.published){color:var(--err)}.calendar-time{display:block;color:inherit;font:inherit}.calendar-star{display:block;width:max-content;color:#d48b0a;font-size:17px;line-height:1.05;letter-spacing:1px;white-space:nowrap}.calendar-event-content{min-width:0}.calendar-event-title{margin:0 0 10px;font-size:16px;line-height:1.45;font-weight:650;word-break:break-word}.calendar-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.calendar-metric{min-width:0;font-family:var(--mono);font-size:13px;line-height:1.3;text-align:left;color:var(--ink2);white-space:normal}.calendar-metric b{display:block;margin-top:3px;color:var(--ink);font-size:14px;font-weight:650;overflow-wrap:anywhere}.calendar-empty{padding:54px 18px;text-align:center;color:var(--ink2);font-size:14px}.calendar-empty.err{color:var(--err)}
 
 /* 周期切换 */
@@ -722,7 +722,7 @@ tr.drop-mark.mark-below td{box-shadow:inset 0 -2.5px 0 var(--accent)}
   .assetview{padding:8px 0 60px}
   .calendarview{padding:8px 0 60px}.calendar-shell{border-left:none;border-right:none;border-radius:0}.calendar-head{top:5px;right:16px}.calendar-month-nav{height:54px;padding:5px 16px}.calendar-month{font-size:14px}.calendar-config{width:44px;height:44px;margin:0 -5px 0 0}.calendar-settings .modal{width:100%;max-width:100vw;border-radius:18px 18px 0 0}
   .calendar-grid{padding:0 8px}.calendar-day{min-height:78px;padding:7px 2px;background:var(--surface)!important}.calendar-day.selected{box-shadow:inset 0 -3px 0 var(--accent)}.calendar-count{font-size:10px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .calendar-events{padding:0 16px}.calendar-events-columns{display:block}.calendar-events-title{padding:14px 0 8px}.calendar-event{grid-template-columns:52px minmax(0,1fr);gap:10px;padding:16px 0 18px;min-height:0}.calendar-time-stack{font-size:12px}.calendar-star{font-size:16px}.calendar-event-title{margin-bottom:12px;font-size:15px}.calendar-metrics{gap:6px}.calendar-metric{font-size:11px}.calendar-metric b{font-size:12px;margin-top:3px}
+  .calendar-events{padding:0 16px}.calendar-event-tabs{display:flex;border-bottom:1px solid var(--hairline)}.calendar-event-tab{position:relative;flex:1;height:46px;font-size:14px;font-weight:600;color:var(--ink2)}.calendar-event-tab.active{color:var(--accent)}.calendar-event-tab.active::after{content:"";position:absolute;right:18px;bottom:-1px;left:18px;height:2px;background:var(--accent);border-radius:2px}.calendar-event-tab-count{margin-left:4px;font-family:var(--mono);font-size:12px;font-weight:500}.calendar-events-columns{display:block}.calendar-events-column{display:none}.calendar-events-columns.show-published .calendar-events-column.published,.calendar-events-columns.show-pending .calendar-events-column.pending{display:block}.calendar-events-title{display:none}.calendar-event{grid-template-columns:52px minmax(0,1fr);gap:10px;padding:16px 0 18px;min-height:0}.calendar-time-stack{font-size:12px}.calendar-star{font-size:16px}.calendar-event-title{margin-bottom:12px;font-size:15px}.calendar-metrics{gap:6px}.calendar-metric{font-size:11px}.calendar-metric b{font-size:12px;margin-top:3px}
   .overview{margin:0 0 16px;border-left:none;border-right:none;border-radius:0}
   .curseg button{height:44px}
   .gearbtn{width:44px;height:44px}
@@ -1144,6 +1144,7 @@ let calendarEvents=[];
 let calendarSelected='';
 let calendarLoading=false;
 let calendarCursor=new Date();
+let calendarEventTab='published';
 
 function calendarDate(value){
   if(typeof value==='number')return new Date(value<1e12?value*1000:value);
@@ -1183,8 +1184,11 @@ function renderCalendar(){
   const label=calendarSelected===today?'今天':calendarSelected.replace(/-/g,' / ');
   const eventHtml=e=>{const state=calendarPublishState(e);return `<article class="calendar-event"><div class="calendar-time-stack ${state.kind}"><span class="calendar-star" aria-label="重要性 ${Number(e.star)||0}">${calendarStars(e.star)}</span><time class="calendar-time">${calendarTime(e.pub_time)}</time></div><div class="calendar-event-content"><h2 class="calendar-event-title">${escAttr(e.title||'未命名事件')}</h2><div class="calendar-metrics"><span class="calendar-metric">前值 <b>${calendarValue(e.previous)}</b></span><span class="calendar-metric">预期 <b>${calendarValue(e.consensus)}</b></span><span class="calendar-metric">公布 <b>${calendarValue(e.actual)}</b></span></div></div></article>`};
   const published=selected.filter(e=>calendarPublishState(e).kind==='published'), pending=selected.filter(e=>calendarPublishState(e).kind!=='published');
-  const column=(title,items,empty)=>`<section class="calendar-events-column"><div class="calendar-events-title">${title} · ${items.length} 项</div>${items.length?items.map(eventHtml).join(''):`<div class="calendar-events-empty">${empty}</div>`}</section>`;
-  eventsHost.innerHTML=selected.length?`<div class="calendar-events-columns">${column(`${label} · 已公布`,published,'暂无已公布事件')}${column('待公布',pending,'暂无待公布事件')}</div>`:'<div class="calendar-empty">当天没有财经事件。</div>';
+  if(calendarEventTab==='published'&&!published.length&&pending.length)calendarEventTab='pending';
+  if(calendarEventTab==='pending'&&!pending.length&&published.length)calendarEventTab='published';
+  const column=(kind,title,items,empty)=>`<section class="calendar-events-column ${kind}"><div class="calendar-events-title">${title} · ${items.length} 项</div>${items.length?items.map(eventHtml).join(''):`<div class="calendar-events-empty">${empty}</div>`}</section>`;
+  const tab=(kind,label,items)=>`<button class="calendar-event-tab ${calendarEventTab===kind?'active':''}" type="button" role="tab" aria-selected="${calendarEventTab===kind}" data-calendar-event-tab="${kind}">${label}<span class="calendar-event-tab-count">${items.length}</span></button>`;
+  eventsHost.innerHTML=selected.length?`<div class="calendar-event-tabs" role="tablist" aria-label="事件状态">${tab('published','已公布',published)}${tab('pending','未公布',pending)}</div><div class="calendar-events-columns show-${calendarEventTab}">${column('published',`${label} · 已公布`,published,'暂无已公布事件')}${column('pending','待公布',pending,'暂无待公布事件')}</div>`:'<div class="calendar-empty">当天没有财经事件。</div>';
 }
 async function loadCalendar({force=false}={}){
   if(calendarLoading)return;calendarLoading=true;renderCalendar();
@@ -4200,6 +4204,10 @@ $('#topTabs').addEventListener('click',e=>{
 $('#calendarGrid').addEventListener('click',e=>{
   const day=e.target.closest('[data-calendar-day]');if(!day)return;
   calendarSelected=day.dataset.calendarDay;calendarCursor=calendarDate(calendarSelected);renderCalendar();
+});
+$('#calendarEvents').addEventListener('click',e=>{
+  const tab=e.target.closest('[data-calendar-event-tab]');if(!tab)return;
+  calendarEventTab=tab.dataset.calendarEventTab;renderCalendar();
 });
 let calendarTouchX=null;
 $('#calendarGrid').addEventListener('touchstart',e=>{calendarTouchX=e.changedTouches[0]?.clientX??null},{passive:true});
