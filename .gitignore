@@ -1,0 +1,17 @@
+.DS_Store
+._*
+.env
+.env.local
+.env.production
+node_modules/
+npm-debug.log
+.workbuddy/
+output/
+coverage/
+*.log
+data/
+backup/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.sha256

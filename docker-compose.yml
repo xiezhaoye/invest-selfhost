@@ -1,0 +1,26 @@
+name: invest
+
+services:
+  invest:
+    build:
+      context: .
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    container_name: invest
+    restart: unless-stopped
+    ports:
+      - "${INVEST_PORT:-8787}:8787"
+    env_file:
+      - .env
+    environment:
+      INVEST_HOST: "0.0.0.0"
+      INVEST_PORT: "8787"
+      INVEST_DB_PATH: /app/data/invest.sqlite
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8787/api/health').then(r=>r.json()).then(j=>process.exit(j.ok&&j.db?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

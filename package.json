@@ -1,0 +1,18 @@
+{
+  "name": "invest",
+  "version": "1.0.0",
+  "description": "个人资产看板、行情与金融日历工具",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "start:local": "node --env-file=.env server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "undici": "^7.16.0"
+  }
+}

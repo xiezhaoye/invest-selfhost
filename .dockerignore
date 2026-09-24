@@ -1,0 +1,23 @@
+# 本地数据和凭据不进入构建上下文。
+.git
+.gitignore
+.dockerignore
+
+node_modules
+data
+
+.env
+.env.local
+.env.production
+
+# 不参与运行
+test
+.workbuddy
+
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sha256
+.DS_Store
+._*
+npm-debug.log

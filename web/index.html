@@ -1,0 +1,4293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自选行情</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --surface2:#fafbfc;
+  --ink:#171a1f; --ink2:#5b6470; --ink3:#8b93a0;
+  --hairline:#e4e6ea; --hairline2:#d5d8de;
+  --accent:#1746c7; --accent-ink:#0f3aa0; --accent-hover:#123ba6;
+  --up:#d5264b; --up-bg:#fdeef1; --down:#0c8a4d; --down-bg:#e9f6ef;
+  --warn:#b97d10; --err:#c22b2b; --ok:#0c8a4d; --info:#1746c7;
+  --mono:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  /* 原型里用到的补充变量 */
+  --hover:#eef0f3; --tint:#eef0f4; --chip:#f1f2f4; --track:#e4e6ea;
+  --unvalued:#fdf7f8; --unvalued-hover:#f6f8fc;
+  --seg-on:#e9eefb; --seg-border:#c3d0f0;
+  --err-soft:#fceaea; --err-line:#f3c9c9;
+  --donut-track:#d5d8de;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+/* 详情面板打开时，列表里的周/月列隐藏：面板内已有同样数据，
+   列表再留两列会把名称与价格挤窄（用户要求「点开后在列表中不显示」）*/
+.has-detail .col-wm{display:none}
+/* 最新价 + 盘前/盘后合并成一格：主价在上，扩展时段在下一行 */
+.px-wrap{display:flex; flex-direction:column; align-items:flex-end; gap:1px; line-height:1.28}
+.px-pre{display:flex; align-items:center; gap:4px; font-size:12.5px}
+.pre-tag{font-size:10.5px; color:var(--ink3); background:var(--surface2);
+  border:1px solid var(--hairline); border-radius:4px; padding:0 4px}
+html{font-size:16px}
+body{
+  font-family:-apple-system,"SF Pro Text","PingFang SC","Noto Sans SC",sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--ink2)}
+
+/* 自选页唯一的新增入口，固定在筛选面板右侧。 */
+.cats-add{margin-left:auto; flex:none}
+.watch-add{
+  width:36px;height:36px;border-radius:8px;color:var(--ink2);
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:background .15s ease,color .15s ease;
+}
+.watch-add:hover{background:var(--hover);color:var(--ink)}
+.watch-add:active{background:var(--seg-on)}
+.watch-add:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.watch-add svg{width:18px;height:18px;stroke-width:2}
+
+/* ===== 一级 tab：自选｜资产 ===== */
+.navsep{width:1px;height:22px;background:var(--hairline2);margin:0 2px}
+.toptabs{display:flex;align-items:center;gap:4px}
+.toptab{
+  height:36px;padding:0 16px;border-radius:6px;font-size:15px;color:var(--ink2);
+  transition:background .15s,color .15s,border-color .15s;border:1px solid transparent;
+}
+.toptab:hover{background:var(--tint);color:var(--ink)}
+.toptab.on{color:var(--accent);font-weight:600;background:var(--seg-on);border-color:var(--seg-border)}
+.toptab:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(23,70,199,.16)}
+
+/* ===== 资产视图 ===== */
+.assetview{max-width:1720px;margin:0 auto;padding:18px 28px 60px}
+.overview{background:var(--surface);border:1px solid var(--hairline2);border-radius:10px;overflow:hidden;margin-bottom:28px}
+.ov-topbar{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+  padding:12px 18px;background:var(--surface2);border-bottom:1px solid var(--hairline);
+}
+.curseg{display:flex;gap:8px}
+.curseg button{
+  height:30px;min-width:64px;padding:0 14px;border-radius:6px;font-size:13px;color:var(--ink2);
+  background:var(--surface);border:1px solid var(--hairline2);font-weight:500;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.curseg button:hover{background:#e9edf4;border-color:var(--accent);color:var(--accent)}
+.curseg button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.curseg button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(23,70,199,.16)}
+.gearbtn{
+  grid-column:3;justify-self:end;width:32px;height:32px;border-radius:8px;
+  display:inline-flex;align-items:center;justify-content:center;color:var(--ink2);
+  transition:background .15s,color .15s;
+}
+.gearbtn:hover{background:#e9edf4;color:var(--accent)}
+.gearbtn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(23,70,199,.16)}
+.gearbtn svg{width:17px;height:17px}
+.ov-blocks{display:grid;grid-template-columns:1fr 1.34fr 1.34fr;gap:0;padding:20px 18px 18px}
+.ov-block{padding:0 20px;min-width:0;
+  /* 标题置顶、内容居中。
+     用户要求「按资产类型汇总…和旁边的渠道副标题水平对齐」——
+     根因是原来每块各自 justify-content:center，而三块内容高度不同
+     （总资产块 2 行、类型块 2 行图例、渠道块 4 行图例），
+     于是标题被推到了不同高度（实测 276 / 215 / 157）。
+     现在标题行固定在块顶部（三块因此严格水平对齐），只让下方内容整体居中。 */
+  display:flex; flex-direction:column;
+}
+.ov-block+.ov-block{border-left:1px solid var(--hairline)}
+/* 标题行统一高度：让「总资产估值 / 资产类型 / 渠道」三行基线一致，
+   也保证各自下方的内容从同一条水平线开始。 */
+.ov-block>.chart-h,.ov-block>.ov-bh{flex:none}
+.ov-block>.block-total-in{flex:1;display:flex;flex-direction:column;justify-content:center}
+/* .chart-main 必须保持 **grid 两列**（环 + 图例并排），同时撑满内容区高度，
+   这样 align-items:center 才能把「环 + 图例」整组在竖直方向居中。
+   ⚠️ 早先把它写成 flex column 会把环和图例竖着堆叠，且环贴到内容区顶部。 */
+.ov-block>.chart-main{
+  flex:1;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:20px;
+  align-items:center;
+  min-height:0;
+}
+.block-total{
+  background:var(--surface2);border-radius:8px;border-left:none!important;
+  /* ⚠️ 上内边距会顶下去 .ov-bh（标题），使它比另两块的标题低。
+     所以只给下/左右内边距，标题保持与「资产类型 / 渠道」同一水平线。 */
+  padding:0 20px 16px;
+}
+.block-total-in{align-items:center;text-align:center;padding-top:16px}
+.ov-total{text-align:center}
+/* 三个标题统一为与资产列表组名同级的 19px/700 */
+.ov-bh{font-size:19px;color:var(--ink);font-weight:700;letter-spacing:-.015em;margin:0 0 10px}
+.ov-total{font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.1;color:var(--ink)}
+.ov-sub{font-size:12.5px;color:var(--ink2);margin-top:8px;text-align:center}
+.chart-h{margin-bottom:10px}
+/* 与「总资产估值」同级：19px/700，行高一致，三行基线才能对齐 */
+.chart-h b{font-size:19px;font-weight:700;color:var(--ink);display:block;
+  letter-spacing:-.015em;line-height:1.25}
+.chart-h .sub{font-size:11.5px;color:var(--ink3);margin-top:3px;line-height:1.45}
+.chart-main{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:center}
+.donut{width:168px;height:168px;flex:none}
+.leg{min-width:0}
+.leg-row{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hairline)}
+.leg .swatch{width:12px;height:12px}
+.leg-row:last-child{border-bottom:none}
+.leg-name{font-size:14px;color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.leg-val{font-size:14px;color:var(--ink2);grid-column:2;padding-left:20px}
+.leg-pct{font-size:14px;color:var(--ink);font-weight:600;text-align:right}
+.swatch{width:10px;height:10px;border-radius:3px;display:block;flex:none}
+
+/* 资产列表 */
+.panel{background:var(--surface);border:1px solid var(--hairline2);border-radius:10px;overflow:hidden}
+.panelbar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--hairline)}
+.ov-typeswitch{display:flex;gap:8px}
+.ov-typeswitch button{
+  height:30px;padding:0 14px;border-radius:6px;font-size:13px;color:var(--ink2);font-weight:500;
+  background:var(--surface);border:1px solid var(--hairline2);transition:background .15s,color .15s,border-color .15s;
+}
+.ov-typeswitch button:hover{background:#e9edf4;border-color:var(--accent);color:var(--accent)}
+.ov-typeswitch button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.ov-typeswitch button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(23,70,199,.16)}
+.tblwrap{padding:0 0 4px}
+.grp{background:var(--surface2);border-bottom:1px solid var(--hairline)}
+.grp-in{display:flex;align-items:center;gap:12px;padding:15px 18px 15px 22px;position:relative}
+.grp-name{font-size:19px;font-weight:700;color:var(--ink);letter-spacing:-.015em}
+.grp-in .swatch{width:12px;height:12px}
+.grp-tag{font-size:12.5px;color:var(--ink3)}
+.grp-spacer{flex:1}
+.grp-val{font-size:18px;font-weight:700;color:var(--ink)}
+.grp-share{font-size:13.5px;color:var(--ink2);display:inline-flex;align-items:center;gap:8px;min-width:130px;justify-content:flex-end}
+.sharebar{width:56px;height:5px;background:var(--track);border-radius:3px;overflow:hidden;display:inline-block}
+.sharebar i{display:block;height:100%;border-radius:3px}
+/* 名称列不能吃满富余宽度（实测 1fr 会涨到 836px，旁边数字列显得很挤）。
+   给名称列一个上限，剩下的宽度由整体居中留白消化。 */
+.arow{display:grid;grid-template-columns:minmax(0,340px) 92px 140px 150px 170px 150px;gap:12px;align-items:center;padding:13px 18px 13px 60px;border-bottom:1px solid var(--hairline);position:relative}
+.grp-in .grp-spacer{flex:1;min-width:12px}
+.arow::before{content:'';position:absolute;left:38px;top:0;bottom:0;width:1px;background:var(--hairline2)}
+.arow:last-child::before{bottom:auto;height:30px}
+.arow:last-child{border-bottom:none}
+.arow:hover{background:var(--hover)}
+.arow.unvalued{background:var(--unvalued)}
+.arow.unvalued:hover{background:var(--unvalued-hover)}
+.namecell{display:flex;align-items:flex-start;gap:10px;min-width:0;position:relative}
+.namecell .nm{min-width:0}
+.aname{font-size:14.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acode{font-size:12px;color:var(--ink3);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.acell{text-align:right;font-size:14px;color:var(--ink)}
+.acell .sub{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px}
+.a-share{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.uv-reason{font-size:11.5px;color:var(--err);margin-top:3px;display:block}
+.astate{padding:56px 24px;text-align:center;color:var(--ink2)}
+.astate h3{font-size:17px;font-weight:600;color:var(--ink);margin-bottom:8px}
+.astate p{font-size:13.5px;line-height:1.7;max-width:560px;margin:0 auto 6px}
+.astate .acts{margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.abanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 18px;font-size:13px;border-bottom:1px solid var(--hairline)}
+.abanner.warn{background:#fdf6e9;color:#8a5c00}
+.abanner.err{background:var(--err-soft,#fceaea);color:var(--err)}
+.abanner .sp{flex:1}
+
+/* 资产页：列表 + 右侧详情面板（与自选页同一套 .has-detail 两栏规则） */
+.pflayout{display:block}
+.pflayout.has-detail{
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,clamp(360px,38vw,620px));
+  gap:22px; align-items:start;
+}
+.pflayout.has-detail #pfPanelHost{min-width:0}
+/* 行可点开详情：给出可点击的视觉反馈（自选页行也是整行可点） */
+.arow{cursor:pointer}
+.arow.sel{background:var(--tint); box-shadow:inset 3px 0 0 var(--accent)}
+.arow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* 详情面板复用自选页的 .detail 样式，只需补齐资产页专属的几行 */
+.detail .dt-pos{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 14px}
+.dt-row{display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:13.5px}
+.dt-row .k{color:var(--ink3)}
+.dt-row .v{font-family:var(--mono); font-weight:600}
+.dt-sub-h{font-size:12px; color:var(--ink3); font-weight:600; letter-spacing:.06em;
+  margin:14px 0 8px; padding-top:12px; border-top:1px solid var(--hairline)}
+.dt-chan{display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13.5px}
+.dt-chan .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dt-chan .qty{font-family:var(--mono); color:var(--ink2)}
+.dt-chan .val{font-family:var(--mono); font-weight:600}
+
+/* ===== 配置弹窗（草稿式） ===== */
+/* 配置弹窗比通用 .modal（480px）宽得多。
+   ⚠️ 必须写 `.modal.cfg-modal` 提高特异性：.modal 在文件后面声明，
+   只用 .cfg-modal 会被它的 width:480px 按源码顺序盖掉（实测弹窗只有 480px 宽）。 */
+.modal.cfg-modal{width:1040px; max-width:calc(100vw - 48px)}
+.cfg-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--hairline)}
+.cfg-head .ttl{font-size:16px;font-weight:600}
+.cfg-head .ver{font-size:12px;color:var(--ink3)}
+.cfg-head .sp{flex:1}
+.cfg-body{display:grid;grid-template-columns:320px minmax(0,1fr);gap:0;max-height:min(70vh,640px);overflow:hidden}
+.cfg-side{border-right:1px solid var(--hairline);padding:16px 16px 16px 20px;overflow:auto}
+.cfg-main{padding:16px 20px;overflow:auto;min-width:0;display:flex;flex-direction:column}
+.cfg-main>.cfg-sec-h{min-height:34px;flex:none}
+.cfg-sec{margin-bottom:18px}
+.cfg-sec-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.cfg-sec-h b{font-size:13.5px;font-weight:600}
+.cfg-sec-h .cnt{font-size:11.5px;color:var(--ink3);background:var(--chip);border-radius:9px;padding:1px 7px}
+.cfg-sec-h .sp{flex:1}
+.chipadd{font-size:12px;color:var(--accent);border:1px solid var(--seg-border,#c3d0f0);border-radius:6px;padding:3px 9px;background:var(--surface)}
+.chipadd:hover{background:var(--seg-on,#e9eefb)}
+.cfg-li{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px}
+.cfg-li .nmx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cfg-li .id{font-size:11px;color:var(--ink3);font-family:var(--mono);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cfg-li .del,.cfg-li .edit{width:22px;height:22px;border-radius:5px;color:var(--ink3);font-size:14px;line-height:1}
+.cfg-li .del:hover{background:var(--hover);color:var(--err)}
+.cfg-li .edit:hover{background:var(--hover);color:var(--accent)}
+.cfg-li .del:disabled{opacity:.35;cursor:not-allowed}
+.cfg-li .del:disabled:hover{background:none;color:var(--ink3)}
+.cfg-hint{font-size:11.5px;color:var(--ink3);line-height:1.55;margin-top:6px}
+.cfg-field{margin-bottom:10px}
+.cfg-field label{display:block;font-size:12px;color:var(--ink2);margin-bottom:4px}
+.cfg-input,.cfg-select{width:100%;height:34px;padding:0 10px;font:inherit;font-size:13.5px;
+  border:1px solid var(--hairline2);border-radius:7px;background:var(--surface);color:var(--ink)}
+.cfg-input:focus,.cfg-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(23,70,199,.12)}
+.cfg-rate{display:flex;align-items:center;gap:8px}
+.cfg-rate .unit{font-size:12px;color:var(--ink3)}
+.cfg-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.cfg-tbl th{font-size:11.5px;font-weight:600;color:var(--ink3);text-align:left;padding:6px 8px;border-bottom:1px solid var(--hairline2);white-space:nowrap}
+.cfg-tbl td{padding:6px 8px;border-bottom:1px solid var(--hairline);vertical-align:middle}
+.cfg-tbl .tname{font-weight:600}
+.cfg-tbl .tsub{display:block;font-size:11px;color:var(--ink3);margin-top:2px}
+.cfg-err{margin-top:12px;padding:9px 12px;border-radius:7px;background:var(--err-soft,#fceaea);
+  border:1px solid var(--err-line,#f3c9c9);color:var(--err);font-size:12.5px;line-height:1.6}
+.cfg-reload{margin-top:10px}
+.cfg-foot{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--hairline)}
+.cfg-foot .sp{flex:1}
+.cfg-draft,.cfg-clean{font-size:12.5px;color:var(--warn);display:inline-flex;align-items:center;gap:6px}
+.cfg-clean{color:var(--ink3)}
+.cfg-draft .dot{width:6px;height:6px;border-radius:50%;background:var(--warn)}
+
+/* ===== 顶栏 ===== */
+.topbar{
+  background:var(--surface); border-bottom:1px solid var(--hairline2);
+  position:sticky; top:0; z-index:50;
+}
+.topbar-inner{
+  max-width:1720px; margin:0 auto; padding:0 28px;
+  display:flex; align-items:center; gap:20px; height:60px;
+}
+.brand{display:flex; align-items:center; gap:12px; white-space:nowrap}
+.brand b{font-size:19px; letter-spacing:.02em}
+.refresh-ico{
+  width:34px; height:34px; border-radius:8px; display:inline-flex;
+  align-items:center; justify-content:center; color:var(--ink2);
+  transition:all .15s;
+}
+.refresh-ico:hover{background:#e9edf4; color:var(--accent)}
+.refresh-ico:disabled{opacity:.45; cursor:default}
+.refresh-ico svg{width:18px; height:18px}
+.refresh-ico.spinning svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--ok)}
+.dot.refreshing{background:var(--info);animation:pulse 1s infinite}
+.dot.partial{background:var(--warn)} .dot.unavailable{background:var(--err)}
+@keyframes pulse{50%{opacity:.35}}
+.topbar-actions{margin-left:auto; display:flex; align-items:center; gap:10px}
+.btn{
+  display:inline-flex; align-items:center; gap:7px;
+  height:36px; padding:0 16px; border-radius:6px;
+  font-size:14.5px; border:1px solid var(--hairline2); background:var(--surface);
+  color:var(--ink); transition:all .15s;
+}
+.btn:hover{border-color:var(--accent); color:var(--accent)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:500}
+.btn.primary:hover{background:var(--accent-ink)}
+.btn:disabled{opacity:.55; cursor:default}
+.btn.icon-only{width:36px; padding:0; justify-content:center}
+
+/* ===== 网络错误横幅 ===== */
+.netbar{
+  position:sticky; top:60px; z-index:49;
+  background:var(--up-bg); color:var(--err);
+  display:flex; align-items:center; justify-content:center; gap:14px;
+  padding:9px 16px; font-size:14px; border-bottom:1px solid #f3d6dc;
+}
+.netbar[hidden]{display:none}
+.netbar button{color:var(--err); font-weight:600; text-decoration:underline}
+
+/* ===== 布局 ===== */
+.layout{max-width:1720px; margin:0 auto; padding:18px 28px 60px}
+
+/* ===== PC 右侧资产详情面板（点击行非操作区打开） ===== */
+/* 列表删了三列后本身变窄；详情面板给到更宽的主列，视觉上才不空。
+   面板用比例+上下限，而不是死宽 620px —— 否则窄屏下列表会被挤到只剩一条。 */
+.layout.has-detail{display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,clamp(360px,38vw,620px)); gap:22px; align-items:start; max-width:1720px}
+.layout.has-detail #main{min-width:0}
+.detail{
+  position:sticky; top:126px; background:var(--surface); border:1px solid var(--hairline2);
+  border-radius:10px; box-shadow:0 1px 2px rgba(20,24,32,.04); overflow:hidden;
+}
+.detail-head{
+  display:flex; align-items:flex-start; gap:10px;
+  padding:14px 16px 12px; border-bottom:1px solid var(--hairline);
+}
+.detail-head .dt-name{font-size:18px; font-weight:700; line-height:1.25; word-break:break-word}
+.detail-head .dt-sub{font-size:12.5px; color:var(--ink3); font-family:var(--mono); margin-top:3px}
+.detail-head .dt-x{
+  margin-left:auto; flex:none; font-size:22px; color:var(--ink3);
+  width:32px; height:32px; line-height:32px; text-align:center; border-radius:8px;
+}
+.detail-head .dt-x:hover{background:#f0f1f4; color:var(--ink)}
+.detail-body{padding:14px 18px 18px}
+
+/* 详情页指标块：列表里删掉的周/月涨跌、更新与状态都挪到这里 */
+.dt-stats{
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px 14px; padding:2px 0 16px; margin-bottom:4px;
+  border-bottom:1px solid var(--hairline);
+}
+.dstat{min-width:0}
+.dstat-l{font-size:12px; color:var(--ink3); white-space:nowrap}
+.dstat-v{font-size:16px; font-weight:600; margin-top:3px; font-family:var(--mono)}
+.dstat-v .price-val{font-size:16px}
+.dstat-v .price-cur{font-size:11px; color:var(--ink3); margin-left:2px}
+.dt-meta{font-family:-apple-system,sans-serif; font-weight:500; font-size:14px}
+.dt-err{grid-column:1/-1; font-size:12.5px; color:var(--err); margin-top:2px; word-break:break-word}
+
+/* 刷新按钮旁的上次更新时间 */
+.sync-time{font-size:13px; color:var(--ink3); white-space:nowrap; margin-left:2px}
+.sync-time.stale{color:var(--warn)}
+
+/* ===== 财经日历 ===== */
+.calendarview{max-width:1720px;margin:0 auto;padding:18px 28px 60px}
+.calendar-shell{background:var(--surface);border:1px solid var(--hairline2);border-radius:10px;overflow:hidden}
+.calendar-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding:16px 18px;border-bottom:1px solid var(--hairline)}
+.calendar-month-control{display:inline-flex;align-items:center;gap:3px}.calendar-month{font-size:15px;font-weight:600;color:var(--ink);text-align:center}.calendar-month-toggle{display:none;width:28px;height:28px;border-radius:7px;color:var(--ink3);align-items:center;justify-content:center}.calendar-month-toggle:hover{background:var(--hover);color:var(--accent)}.calendar-month-toggle svg{width:16px;height:16px;transition:transform .15s ease}.calendar-month-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}.calendar-config{justify-self:end;width:34px;height:34px;border-radius:8px;color:var(--ink2);display:inline-flex;align-items:center;justify-content:center}.calendar-config:hover{background:var(--hover);color:var(--accent)}.calendar-config:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.calendar-config svg{width:18px;height:18px}
+.calendar-settings{align-items:flex-end;padding-top:0}.calendar-settings .modal{width:480px;border-radius:14px 14px 0 0}.calendar-settings .modal-head{padding:16px 18px 0}.calendar-settings .modal-body{padding:16px 18px calc(20px + env(safe-area-inset-bottom))}.calendar-settings p{font-size:13px;line-height:1.65;color:var(--ink2);margin-bottom:14px}.calendar-settings .hint{line-height:1.55}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--hairline)}.calendar-weekday{padding:10px 12px 6px;font-size:12px;font-weight:600;color:var(--ink3);text-align:right}
+.calendar-day{min-height:96px;padding:8px 10px;border-top:1px solid var(--hairline);border-right:1px solid var(--hairline);text-align:left;vertical-align:top;position:relative}.calendar-day:nth-child(7n){border-right:none}.calendar-day.muted{background:var(--surface2);color:var(--ink3)}
+.calendar-day.today .calendar-date{background:var(--accent);color:#fff}.calendar-day.has-events{cursor:pointer}.calendar-day.has-events:hover{background:#f4f7ff}.calendar-day.selected{box-shadow:inset 0 -3px 0 var(--accent);background:#f4f7ff}
+.calendar-date{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;border-radius:6px;font-size:13px;font-family:var(--mono);font-weight:600}.calendar-count{display:block;margin-top:9px;font-size:11px;color:var(--accent);font-weight:600}.calendar-count.hot{color:var(--warn)}
+.calendar-events{padding:0 18px}.calendar-events-title{padding:16px 0 10px;font-size:14px;font-weight:700;color:var(--ink)}.calendar-event{display:grid;grid-template-columns:64px 58px 42px minmax(0,1fr) auto;border-top:1px solid var(--hairline);align-items:center;gap:12px;padding:14px 2px}
+.calendar-time{font-family:var(--mono);font-weight:600;color:var(--ink2);font-size:13px}.calendar-status{font-size:11px;font-weight:600;border:1px solid var(--hairline2);border-radius:5px;padding:2px 5px;color:var(--ink3);white-space:nowrap;text-align:center}.calendar-status.pending{color:#a06500;border-color:#ecc98a;background:#fdf6e9}.calendar-status.published{color:var(--ok);border-color:#b8dec8;background:var(--down-bg)}.calendar-star{color:#d48b0a;font-size:13px;letter-spacing:1px;white-space:nowrap}.calendar-event-title{font-size:14px;font-weight:600;min-width:0}.calendar-metrics{display:grid;grid-template-columns:repeat(3,110px);gap:18px}.calendar-metric{font-family:var(--mono);font-size:13px;text-align:right;color:var(--ink2)}.calendar-metric b{color:var(--ink);font-weight:650}.calendar-empty{padding:54px 18px;text-align:center;color:var(--ink2);font-size:14px}.calendar-empty.err{color:var(--err)}
+
+/* 周期切换 */
+.ivswitch{display:flex; gap:6px; margin-bottom:12px}
+.ivbtn{
+  flex:1; height:34px; border:1px solid var(--hairline2); border-radius:8px;
+  font-size:13.5px; font-weight:500; color:var(--ink2); background:var(--surface);
+}
+.ivbtn:hover{border-color:var(--ink3); color:var(--ink)}
+.ivbtn.active{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+
+/* 图表容器 */
+.chartbox{position:relative; background:var(--surface); border-radius:8px}
+/* PC 端把 K 线区域调高（用户要求），高度用 vh+px 混合，窄屏时另有覆盖 */
+.chartbox svg{display:block; width:100%; height:clamp(300px,46vh,520px); overflow:visible}
+.chart-msg{
+  min-height:190px; display:flex; align-items:center; justify-content:center;
+  text-align:center; color:var(--ink2); font-size:14px; padding:24px 8px; line-height:1.6;
+}
+.chart-msg.err{color:var(--err)}
+.chart-note{font-size:12.5px; color:var(--ink3); margin-top:10px; line-height:1.55}
+.chart-note .stale-tag, .chart-note .limited-tag{
+  display:inline-block; background:#fdf6e9; color:#a06500; border:1px solid #ecc98a;
+  border-radius:5px; padding:1px 6px; font-size:11.5px; font-weight:600; margin-right:6px;
+}
+/* 图表图元 */
+.cd-up{fill:var(--up)} .cd-down{fill:var(--down)}
+.cd-wick-up{stroke:var(--up)} .cd-wick-down{stroke:var(--down)}
+.cd-grid{stroke:var(--hairline)}
+.cd-axis{fill:var(--ink3); font-size:10px; font-family:var(--mono)}
+.cd-hover{stroke:var(--ink3); stroke-dasharray:3 3}
+/* 十字线：细虚线，不抢蜡烛的视觉 */
+.cd-cross{stroke:var(--ink3); stroke-width:1; stroke-dasharray:3 3; opacity:.75}
+.cd-dot{fill:var(--surface); stroke:var(--ink); stroke-width:1.5}
+/* 跟随的 OHLC 提示框 */
+.cd-tip{
+  position:absolute; z-index:5; min-width:112px; pointer-events:none;
+  background:rgba(255,255,255,.97); border:1px solid var(--hairline2);
+  border-radius:8px; padding:7px 9px; box-shadow:0 4px 14px rgba(20,24,32,.12);
+  font-size:12px; line-height:1.5;
+}
+.cd-tip-d{font-weight:700; font-size:12.5px; margin-bottom:3px; font-family:var(--mono)}
+.cd-tip-r{display:flex; justify-content:space-between; gap:10px}
+.cd-tip-r .k{color:var(--ink3)}
+.cd-tip-r .v{font-family:var(--mono); font-weight:600}
+.chartbox{position:relative}
+/* 图表可交互：捏合/拖动由 JS 处理，这里只给手感提示 */
+.chartbox svg{touch-action:none; cursor:crosshair}
+.zoom-hint{font-size:12.5px; color:var(--ink3); margin-top:6px}
+.detail-empty{padding:30px 16px; text-align:center; color:var(--ink2); font-size:14px}
+/* 两层筛选共用一张面板。类型是主分组，标签是跨市场的快捷视图。 */
+.watch-filters{
+  position:sticky;top:72px;z-index:45;
+  max-width:1720px; margin:12px auto 0; padding:0 28px;
+}
+body.has-netbar .watch-filters{top:calc(72px + 39px)}
+body.has-netbar thead th{top:calc(166px + 39px)}
+.filter-shell{
+  background:var(--surface);
+  border:1px solid var(--hairline2); border-radius:10px;
+  box-shadow:0 4px 16px rgba(20,24,32,.055);overflow:hidden;
+}
+.filter-row{display:flex;align-items:center;gap:14px;min-height:46px;padding:6px 14px}
+.filter-row+.filter-row{border-top:1px solid var(--hairline);background:var(--surface2)}
+.cats{
+  flex:1;min-width:0;display:flex;gap:5px;align-items:center;
+  overflow-x:auto;scrollbar-width:none;
+}
+.cats::-webkit-scrollbar{display:none}
+.cat-item{
+  white-space:nowrap;height:34px;padding:0 11px;border-radius:7px;font-size:13.5px;
+  color:var(--ink2);border:1px solid transparent;display:inline-flex;align-items:center;gap:7px;
+  transition:background .15s ease,color .15s ease,border-color .15s ease;
+}
+.cat-item:hover{background:var(--hover);color:var(--ink)}
+.cat-item.active{color:var(--accent-ink);font-weight:650;background:var(--seg-on);border-color:var(--seg-border)}
+.cat-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cat-item.star-tab .star-ico{color:#dc930c;font-size:15px}
+.tagsbar .cat-item{height:30px;font-size:13px;padding:0 10px;border-radius:15px}
+.tag-prefix{font-weight:700;color:var(--ink3)}
+.tagsbar .cat-item.active .tag-prefix{color:var(--accent)}
+/* 拖动标签页签时的落点提示与拖起态 */
+.tagsbar .cat-item[draggable="true"]{cursor:grab}
+.tagsbar .cat-item.dragging{opacity:.4}
+.tagsbar .cat-item.drop-mark.mark-left{box-shadow:inset 2.5px 0 0 var(--accent)}
+.tagsbar .cat-item.drop-mark.mark-right{box-shadow:inset -2.5px 0 0 var(--accent)}
+.tags-empty{
+  color:var(--ink3);font-size:12.5px;padding:0 10px;white-space:nowrap;
+}
+
+/* ===== 表格 ===== */
+.tablewrap{
+  background:var(--surface); border:1px solid var(--hairline2); border-radius:10px;
+  overflow:clip; box-shadow:0 1px 2px rgba(20,24,32,.04);
+}
+.group-head{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 18px; background:var(--surface2);
+  border-top:1px solid var(--hairline); border-bottom:1px solid var(--hairline);
+  font-size:13.5px; color:var(--ink2); font-weight:600; letter-spacing:.04em;
+}
+.group-head:first-child{border-top:none}
+.group-head .gline{flex:1; height:1px; background:var(--hairline)}
+table{width:100%; border-collapse:collapse}
+/* 价格/涨跌这类数字列按内容宽度收窄，把富余宽度让给「名称 / 代码」。
+   去掉币种后最新价只剩两行数字，确实不需要那么宽（实测内容约 128px，
+   而 auto 布局会把它撑到 330px）。用百分比上限约束即可，不必写死像素。 */
+/* 各列尽量等分。
+   必须用 table-layout:fixed 才能让下面的百分比真正生效 —— auto 布局会按内容
+   「偏好宽度」分配，我给的 width 只是建议值，长名称照样把该列撑到 300px+。
+   改用 fixed 后：列宽严格按百分比分，超出用省略号截断（.asset-name 已设 overflow）。 */
+#main table{table-layout:fixed}
+#main thead th, #main tbody td{overflow:hidden; text-overflow:ellipsis}
+/* ⚠️ 用 table-layout:fixed 时，各列宽度必须**加起来正好 100%**。
+   否则浏览器会把剩下的份额全塞给某一列（实测漏算 12.5% 时，
+   末列被撑到 223px 而不是声明的 84px）。这里用百分比表达全部 8 列：
+   6% + 20% + 14% + 11% + 11% + 11% + 14% + 13% = 100% */
+#main thead th:nth-child(1), #main tbody td:nth-child(1){width:6%}    /* 星标 */
+#main thead th:nth-child(2), #main tbody td:nth-child(2){width:20%}   /* 名称 / 代码 */
+#main thead th:nth-child(3), #main tbody td:nth-child(3){width:14%}   /* 最新价（含盘前/盘后两行）*/
+#main thead th:nth-child(4), #main tbody td:nth-child(4){width:11%}   /* 日涨跌 */
+#main thead th:nth-child(5), #main tbody td:nth-child(5){width:11%}   /* 周涨跌 */
+#main thead th:nth-child(6), #main tbody td:nth-child(6){width:11%}   /* 月涨跌 */
+#main thead th:nth-child(7), #main tbody td:nth-child(7){width:14%}   /* 总市值 */
+#main thead th:last-child, #main tbody td:last-child{width:13%}       /* 操作按钮 */
+/* 名称允许截断，否则长名字（如「美债10年期收益率」）会把该列撑宽、挤掉别人 */
+#main tbody td.name-cell .asset-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#main tbody td.name-cell .asset-code{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+thead th{
+  position:sticky; top:166px; z-index:10;
+  background:var(--surface2); border-bottom:1px solid var(--hairline2);
+  font-size:12.5px; font-weight:600; color:var(--ink3); letter-spacing:.06em;
+  padding:9px 14px; text-align:right; white-space:nowrap;
+}
+thead th:first-child{text-align:left; padding-left:8px}
+/* 「名称 / 代码」表头要与下面第一行文字左对齐，不能跟着数字列右对齐后再居中留白 */
+thead th:nth-child(2){text-align:left; padding-left:4px}
+tbody td{
+  padding:11px 14px; border-bottom:1px solid var(--hairline);
+  font-size:15.5px; text-align:right; white-space:nowrap; vertical-align:middle;
+}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .1s}
+tbody tr:hover{background:#f6f8fc}
+tbody tr.unavail{background:#fbf7f7}
+td.name-cell{text-align:left; padding-left:4px}
+.asset-name{font-weight:600; font-size:16px}
+.asset-code{font-family:var(--mono); font-size:13px; color:var(--ink3); margin-top:1px}
+.price-val{font-size:16.5px; font-weight:500}
+.price-cur{font-size:12.5px; color:var(--ink3); margin-left:6px; font-family:-apple-system,sans-serif}
+.muted-dash{color:var(--ink3); font-weight:400}
+.chg{font-weight:500}
+.off-note{font-size:12.5px; color:var(--ink3); font-family:-apple-system,sans-serif}
+.mcap-val{font-size:15px}
+.st-cell{font-size:13px; color:var(--ink2)}
+.st-cell .dot{margin-right:6px; vertical-align:0}
+.st-cell.unavailable{color:var(--err)}
+.st-cell.partial{color:var(--warn)}
+.rowact{display:flex; gap:2px; justify-content:flex-end; opacity:0; transition:opacity .12s}
+tr:hover .rowact{opacity:1}
+.iconbtn{
+  width:30px; height:30px; border-radius:6px; display:inline-flex;
+  align-items:center; justify-content:center; color:var(--ink3);
+}
+.iconbtn:hover{background:#e9edf4; color:var(--accent)}
+.iconbtn.danger:hover{background:#fceaea; color:var(--err)}
+.iconbtn svg{width:16px; height:16px}
+.iconbtn:disabled{opacity:.3; cursor:default}
+.confirm-del{
+  font-size:12.5px; color:#fff; background:var(--err); border-radius:5px;
+  padding:5px 10px;
+}
+/* 刷新中的行 */
+tr.refreshing td{color:var(--ink3)}
+tr.refreshing .price-val{animation:pulse 1s infinite}
+
+/* ===== 标星列 ===== */
+.star-cell{width:30px; padding-left:8px; padding-right:0; text-align:left}
+.star-cell .iconbtn{opacity:.5}
+.star-cell .iconbtn:hover{opacity:1}
+.star-cell .iconbtn.starred{color:#e8930c; opacity:1}
+.star-cell .iconbtn svg{width:17px; height:17px}
+
+/* ===== 日涨跌色块（与移动端一致） ===== */
+.dpill{
+  display:inline-block; min-width:76px; text-align:center; color:#fff;
+  font-weight:700; font-size:14px; border-radius:7px; padding:5px 8px;
+  font-family:var(--mono); line-height:1.2;
+}
+.dpill.up{background:var(--up)} .dpill.down{background:var(--down)} .dpill.flat{background:#9aa1ad}
+.dpill.off{background:#eef0f4; color:var(--ink3); font-weight:500; font-size:12px; font-family:-apple-system,sans-serif}
+
+/* ===== 拖拽排序 ===== */
+tbody tr[draggable="true"]{cursor:grab}
+tbody tr.dragging{opacity:.4}
+tbody tr.dragging td{background:#f0f4fd}
+tr.drop-mark.mark-above td{box-shadow:inset 0 2.5px 0 var(--accent)}
+tr.drop-mark.mark-below td{box-shadow:inset 0 -2.5px 0 var(--accent)}
+.drag-tip{
+  font-size:13px; color:var(--ink3); margin:0 4px 10px;
+}
+
+/* ===== 标签选择（新增/编辑弹窗） ===== */
+.tagpick{display:flex; flex-wrap:wrap; gap:8px; margin-top:2px}
+.tagpick:empty::after{content:'还没有标签，下面新建一个'; color:var(--ink3); font-size:13px}
+.tagchi{
+  display:inline-flex; align-items:center; gap:6px;
+  height:30px; padding:0 12px; border-radius:15px; font-size:13.5px;
+  border:1px solid var(--hairline2); background:var(--surface); color:var(--ink2);
+  transition:all .15s;
+}
+.tagchi:hover{border-color:var(--accent); color:var(--accent)}
+.tagchi.on{background:var(--seg-on); border-color:var(--seg-border); color:var(--accent); font-weight:600}
+.tagchi .star-ico{color:#e8930c}
+.tagchi{position:relative;padding:0}
+.tagchi-select{height:100%;padding:0 22px 0 12px;border-radius:inherit;display:inline-flex;align-items:center;gap:6px;font-size:inherit;color:inherit}
+.tagchi-select:focus-visible,.tagop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tagchi .tagop.del{
+  position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--surface);border:1px solid var(--hairline2);color:var(--ink3);
+  font-size:13px;line-height:1;box-shadow:0 1px 3px rgba(20,24,32,.1);
+}
+.tagchi .tagop.del:hover{background:var(--err-soft);border-color:var(--err-line);color:var(--err)}
+.tagchi .tagop.del.confirm{width:50px;border-radius:10px;background:var(--err);border-color:var(--err);color:#fff;font-size:11px}
+/* 改名时就地变输入框 */
+.tagchi.renaming{padding:0 6px}
+.tagchi .tagrename{
+  width:88px; height:20px; padding:0 5px; font-size:13px;
+  border:1px solid var(--seg-border); border-radius:4px; background:var(--surface); color:var(--ink);
+}
+.tagchi .tagrename:focus{outline:none; border-color:var(--accent)}
+.tagnew{display:flex; gap:8px; margin-top:10px}
+.tagnew input{
+  flex:1; min-width:0; height:34px; padding:0 10px; border-radius:7px;
+  border:1px solid var(--hairline2); background:var(--surface); color:var(--ink); font-size:14px;
+}
+.tagnew input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(23,70,199,.12)}
+.tagnew .btn{height:34px; padding:0 14px; font-size:14px}
+
+/* ===== 空状态 ===== */
+.empty{
+  background:var(--surface); border:1px dashed var(--hairline2); border-radius:10px;
+  padding:64px 20px; text-align:center;
+}
+.empty h3{font-size:19px; margin-bottom:8px}
+.empty p{font-size:15px; color:var(--ink2); margin-bottom:20px}
+
+/* ===== 弹窗 ===== */
+.overlay{
+  position:fixed; inset:0; background:rgba(23,26,31,.4); z-index:100;
+  display:none; align-items:flex-start; justify-content:center; padding-top:12vh;
+}
+.overlay.open{display:flex}
+.modal{
+  width:480px; max-width:calc(100vw - 40px); background:var(--surface);
+  border-radius:12px; box-shadow:0 18px 50px rgba(20,24,32,.25); overflow:hidden;
+}
+.modal-sm{width:400px}
+.modal-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 22px 0; font-size:18px; font-weight:600;
+}
+.modal-x{color:var(--ink3); font-size:20px; width:32px; height:32px; border-radius:6px}
+.modal-x:hover{background:#f0f1f4; color:var(--ink)}
+.modal-body{padding:16px 22px 22px}
+.field{margin-bottom:15px}
+.field label{display:block; font-size:13.5px; color:var(--ink2); margin-bottom:6px; font-weight:500}
+.field input[type=text], .field input[type=password], .field select{
+  width:100%; height:42px; padding:0 12px; font:inherit; font-size:15.5px;
+  border:1px solid var(--hairline2); border-radius:7px; background:#fff; color:var(--ink);
+}
+.field input:focus, .field select:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(23,70,199,.12)}
+.field /* 代码模糊搜索下拉 */
+.sym-wrap{position:relative}
+.sym-drop{
+  position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:20;
+  background:var(--surface); border:1px solid var(--hairline2); border-radius:8px;
+  box-shadow:0 6px 20px rgba(20,24,32,.14); max-height:260px; overflow-y:auto;
+}
+.sym-drop[hidden]{display:none}
+.sym-item{
+  display:flex; align-items:center; gap:10px; padding:9px 12px;
+  cursor:pointer; border-bottom:1px solid var(--hairline);
+}
+.sym-item:last-child{border-bottom:none}
+.sym-item:hover,.sym-item.active{background:#f2f5fb}
+.sym-item .si-main{min-width:0; flex:1}
+.sym-item .si-name{font-size:14.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.sym-item .si-code{font-size:12.5px; color:var(--ink3); font-family:var(--mono); margin-top:1px}
+.sym-item .si-mkt{
+  flex:none; font-size:12px; color:var(--ink2); background:var(--surface2);
+  border:1px solid var(--hairline); border-radius:5px; padding:2px 6px;
+}
+.sym-empty{padding:12px; text-align:center; color:var(--ink3); font-size:13.5px}
+.hint{font-size:12.5px; color:var(--ink3); margin-top:5px}
+.field .err-msg{font-size:13px; color:var(--err); margin-top:6px; display:none}
+.field.error input{border-color:var(--err)}
+.field.error .err-msg{display:block}
+.check-row{display:flex; align-items:center; gap:10px; font-size:15px}
+.check-row input{width:17px; height:17px; accent-color:var(--accent)}
+.modal-foot{display:flex; justify-content:flex-end; gap:10px; padding-top:6px}
+.form-error{
+  display:none; background:var(--up-bg); color:var(--err); font-size:13.5px;
+  border-radius:7px; padding:9px 12px; margin-bottom:14px;
+}
+.form-error.show{display:block}
+
+/* ===== 登录闸门 ===== */
+.overlay.gate{align-items:center; padding-top:0}
+.overlay.gate .modal{width:430px}
+.gate-note{font-size:13px; color:var(--ink3); margin-top:14px; line-height:1.6}
+
+/* ===== toast ===== */
+.toasts{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center}
+.toast{
+  background:#23272f; color:#fff; font-size:14.5px; border-radius:8px;
+  padding:10px 18px; box-shadow:0 8px 24px rgba(0,0,0,.25);
+  animation:toastIn .25s ease;
+}
+.toast.err{background:var(--err)}
+@keyframes toastIn{from{opacity:0; transform:translateY(10px)}}
+
+@media (max-width:900px){
+  /* 表格现有 6 列：1 星标 | 2 名称/代码 | 3 最新价 | 4 日涨跌 | 5 总市值 | 6 操作。
+     窄屏先隐掉总市值与操作列（原规则写的是 9/10，删列后已失效）。 */
+  thead th:nth-child(5), tbody td:nth-child(5),
+  thead th:nth-child(6), tbody td:nth-child(6){display:none}
+}
+
+/* ===== 移动端（≤820px）：长桥式行情列表 ===== */
+@media (max-width:820px){
+  .topbar{position:static}
+  .netbar{top:0; position:static}
+  body.has-netbar .watch-filters{top:0}
+  .topbar-inner{height:auto; flex-wrap:wrap; padding:10px 16px 12px; row-gap:8px; gap:12px}
+  .brand b{font-size:17px}
+  .btn{height:34px; padding:0 12px; font-size:13.5px; border-radius:7px}
+  .layout{display:block; padding:16px 0 60px}
+  .layout.has-detail{display:block}
+  .pflayout.has-detail{display:block}
+  .dt-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .chartbox svg{height:clamp(220px,34vh,320px)}
+  .watch-filters{top:0;padding:0;margin-top:8px}
+  .filter-shell{border-left:none;border-right:none;border-radius:0}
+  .filter-row{gap:8px;padding:6px}
+  .cats{gap:8px}
+  .cat-item,.tagsbar .cat-item{height:44px;min-width:44px;justify-content:center;font-size:12.5px;padding:0 8px}
+  .watch-add{width:44px;height:44px}
+  .tablewrap{border:1px solid var(--hairline2);border-left:none;border-right:none;border-radius:0;box-shadow:0 1px 2px rgba(20,24,32,.04)}
+  .panel{border-radius:0; border-left:none; border-right:none}
+  .pflayout.has-detail .panel{border-radius:10px}
+  .group-head{padding:12px 16px 6px; font-size:12.5px; letter-spacing:.1em; border-top:none}
+  .empty{margin:0; padding:56px 20px}
+  .overlay{padding-top:6vh}
+  .assetview{padding:0 0 60px}
+  .calendarview{padding:0 0 60px}.calendar-shell{border-left:none;border-right:none;border-radius:0}.calendar-head{padding:13px 16px}.calendar-month{font-size:14px}.calendar-month-toggle{display:inline-flex;width:38px;height:38px;margin:-5px}.calendar-config{width:44px;height:44px;margin:-5px -5px -5px 0}.calendar-settings .modal{width:100%;max-width:100vw;border-radius:18px 18px 0 0}
+  .calendar-grid{display:flex;overflow-x:auto;scrollbar-width:none;padding:0 8px}.calendar-grid::-webkit-scrollbar{display:none}.calendar-weekday{display:none}.calendar-day{flex:0 0 calc((100vw - 16px) / 7);min-height:78px;padding:7px 2px;text-align:center;border-top:none;border-right:none;background:var(--surface)!important}.calendar-day:not(.mobile-week){display:none}.calendar-grid.month-open{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));padding:0;overflow:visible}.calendar-grid.month-open .calendar-day:not(.mobile-week){display:block}.calendar-grid.month-open .calendar-day{min-height:64px;min-width:0}.calendar-day.selected{box-shadow:inset 0 -3px 0 var(--accent)}.calendar-count{font-size:10px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .calendar-events{padding:0 16px}.calendar-events-title{padding:14px 0 8px}.calendar-event{grid-template-columns:48px minmax(0,1fr) auto;gap:8px;padding:13px 0}.calendar-status{grid-column:3;grid-row:1}.calendar-event-title{grid-column:2;grid-row:1;font-size:15px}.calendar-time{grid-column:1;grid-row:1;font-size:12px}.calendar-star{grid-column:1;grid-row:2;font-size:10px;letter-spacing:0}.calendar-metrics{grid-column:2/-1;grid-row:2;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.calendar-metric{font-size:11px;text-align:left}.calendar-metric b{display:block;font-size:12px;margin-top:2px}
+  .overview{margin:12px 0 16px;border-left:none;border-right:none;border-radius:0}
+  .curseg button{height:44px}
+  .gearbtn{width:44px;height:44px}
+  .ov-blocks{display:block;padding:0}
+  .ov-block{padding:16px;min-height:0}
+  .ov-block+.ov-block{border-left:none;border-top:1px solid var(--hairline)}
+  .block-total{border-radius:0;padding:16px}
+  .block-total-in{padding-top:0}
+  .ov-total{font-size:30px}
+  .chart-main,.ov-block>.chart-main{grid-template-columns:104px minmax(0,1fr);gap:12px}
+  .donut{width:104px;height:104px}
+  .leg-row{gap:6px;padding:5px 0}
+  .leg-name,.leg-pct{font-size:12.5px}
+  .leg-val{font-size:12px;padding-left:16px}
+  .panel{border-left:none;border-right:none;border-radius:0}
+  .panelbar{flex-wrap:wrap;padding:12px 14px}
+  .ov-typeswitch button{height:44px;padding:0 12px}
+  .grp-in{gap:8px;padding:12px 14px}
+  .grp-name{font-size:16px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grp-tag,.grp-share{display:none}
+  .grp-val{font-size:15px;white-space:nowrap}
+  .arow{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 16px}
+  .arow::before{display:none}
+  .arow .namecell{grid-column:1;grid-row:1}
+  .arow .aname{font-size:17px}
+  .arow .acode{font-size:12.5px}
+  .arow .acell.qty{grid-column:1;grid-row:2;text-align:left;font-size:12.5px;color:var(--ink2)}
+  .arow .acell.qty::before{content:'持仓 ';color:var(--ink3)}
+  .arow .acell.value{grid-column:2;grid-row:1;font-size:16px;font-weight:650}
+  .arow .acell.daily{grid-column:2;grid-row:2;font-size:13px}
+  .arow .acell.unit-price,.arow .acell.share{display:none}
+  .arow .acell .sub{display:none}
+  #pfDetail{
+    position:fixed;top:auto;left:0;right:0;bottom:0;z-index:160;
+    max-height:90dvh;overflow-y:auto;overscroll-behavior:contain;
+    border:none;border-radius:18px 18px 0 0;
+    box-shadow:0 -10px 40px rgba(20,24,32,.2);
+    transform:translateY(105%);transition:transform .22s ease;
+  }
+  #pfDetail.open{transform:translateY(0)}
+  #pfDetail .detail-head{position:sticky;top:0;z-index:1;background:var(--surface)}
+  #pfDetail .dt-x{width:44px;height:44px;line-height:44px}
+  #pfDetail .detail-body{padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+  body.pf-sheet-open{overflow:hidden}
+  #cfgOverlay{padding-top:0}
+  .modal.cfg-modal{width:100%;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0;display:flex;flex-direction:column}
+  .cfg-body{display:block;flex:1;min-height:0;max-height:none;overflow-y:auto}
+  .cfg-side{border-right:none;border-bottom:1px solid var(--hairline);overflow:visible}
+  .cfg-main{overflow-x:auto}
+  .cfg-tbl{min-width:640px}
+  .cfg-input,.cfg-select{height:44px}
+  .cfg-head,.cfg-foot{padding:12px 16px}
+  .cfg-head .ver{display:none}
+  .cfg-foot{flex-wrap:wrap}
+  .cfg-foot .sp{flex-basis:100%;order:1}
+  .cfg-foot .btn{order:2}
+}
+@media (prefers-reduced-motion:reduce){#pfDetail{transition:none}}
+
+/* 移动端列表行 */
+.mlist{background:var(--surface);border:1px solid var(--hairline2);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(20,24,32,.04)}
+@media (max-width:820px){.mlist{border-left:none;border-right:none;border-radius:0}}
+.mgroup{
+  padding:12px 16px 5px; font-size:12.5px; color:var(--ink3); font-weight:600;
+  letter-spacing:.1em; background:var(--surface2); border-top:1px solid var(--hairline);
+}
+.mgroup:first-child{border-top:none}
+.mrow{
+  display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+  gap:10px; align-items:center; padding:13px 14px;
+  border-bottom:1px solid var(--hairline); cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.mrow:active{background:#f3f6fb}
+.mname{font-size:19px; font-weight:700; line-height:1.25; letter-spacing:-.01em}
+.mstar{color:#e8930c; font-size:15px; margin-right:3px}
+.mcode{display:flex; gap:7px; align-items:center; margin-top:3px}
+.mtag{font-size:11px; font-weight:600; border-radius:3px; padding:1.5px 6px; line-height:16px}
+.mtag.us{background:#e9f0fd; color:#2f6bde}
+.mtag.hk{background:#fdeeea; color:#d9532c}
+.mtag.a_share{background:#fdeaea; color:#c2413f}
+.mtag.crypto{background:#f2eafa; color:#8a53d8}
+.mtag.index{background:#e6f4e4; color:#2f7d3f}
+.msym{font-family:var(--mono); font-size:13px; color:var(--ink3)}
+.mprice{text-align:right}
+.mprice .v{
+  display:block; font-size:19px; font-weight:700; line-height:1.2;
+  font-family:var(--mono); font-variant-numeric:tabular-nums;
+}
+.mprice .s{
+  display:block; font-size:11.5px; color:var(--ink3); margin-top:2px;
+  font-family:var(--mono); white-space:nowrap;
+  max-width:118px; overflow:hidden; text-overflow:ellipsis;
+}
+.mpill{
+  min-width:78px; text-align:center; color:#fff; font-weight:700; font-size:14.5px;
+  border-radius:8px; padding:7px 6px; font-family:var(--mono); line-height:1.15;
+}
+.mpill.up{background:var(--up)} .mpill.down{background:var(--down)} .mpill.flat{background:#9aa1ad}
+.mpill.off{background:#eef0f4; color:var(--ink3); font-weight:500; font-size:12px; font-family:-apple-system,sans-serif}
+
+@media (max-width:420px){
+  .mname{font-size:18px}
+  .mprice .v{font-size:18px}
+  .mprice .s{max-width:92px}
+  .mpill{min-width:72px; font-size:13.5px; padding:6px 4px}
+  /* 移动端价格下方的盘前/盘后：与前一行价格同样右对齐，标签用小胶囊区分 */
+  .mpre{display:inline-flex; align-items:center; gap:5px; justify-content:flex-end}
+  .mpre-tag{font-size:10.5px; color:var(--ink3); background:var(--surface2);
+    border:1px solid var(--hairline); border-radius:4px; padding:0 4px}
+  .mrow{gap:8px; padding:12px 12px}
+}
+
+/* 移动端底部操作面板 */
+.sheet-overlay{
+  position:fixed; inset:0; background:rgba(23,26,31,.45); z-index:150; display:none;
+}
+.sheet-overlay.open{display:block}
+.sheet{
+  position:fixed; left:0; right:0; bottom:0; z-index:160;
+  background:var(--surface); border-radius:18px 18px 0 0;
+  transform:translateY(105%); transition:transform .22s ease;
+  padding:20px 22px calc(22px + env(safe-area-inset-bottom));
+  box-shadow:0 -10px 40px rgba(20,24,32,.2);
+}
+.sheet.open{transform:translateY(0)}
+.sheet-head{font-size:20px; font-weight:700; display:flex; justify-content:space-between; align-items:center}
+.sheet-head .x{font-size:24px; color:var(--ink3); width:36px; height:36px; text-align:center; line-height:36px; border-radius:8px}
+.sheet-head .x:active{background:#f0f1f4}
+.sheet-sub{font-size:13px; color:var(--ink3); font-family:var(--mono); margin-top:2px}
+.sheet-chart{margin:14px 0 2px}
+.sheet-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px 12px; margin:18px 0 6px}
+.sg .dl{font-size:12px; color:var(--ink3)}
+.sg .dv{font-size:17px; font-weight:600; margin-top:2px; font-family:var(--mono)}
+.sheet-note{font-size:13px; color:var(--ink2); margin:10px 0 2px}
+.sheet-acts{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:16px}
+.pf-detail-overlay{position:fixed;inset:0;background:rgba(23,26,31,.45);z-index:150;display:none}
+.pf-detail-overlay.open{display:block}
+.sabtn{
+  height:42px; border:1px solid var(--hairline2); border-radius:10px;
+  font-size:14px; font-weight:500; color:var(--ink);
+}
+.sabtn:disabled{opacity:.35}
+.sabtn.danger{color:var(--err)}
+.sabtn.confirm{background:var(--err); color:#fff; border-color:var(--err)}
+.sabtn.on-star{color:#c07a00; border-color:#ecc98a; background:#fdf6e9}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <b>Invest</b>
+      <span class="navsep"></span>
+    </div>
+    <nav class="toptabs" id="topTabs" role="tablist" aria-label="一级导航">
+      <button class="toptab on" data-view="watch" id="tabWatch" role="tab" aria-selected="true">自选</button>
+      <button class="toptab" data-view="asset" id="tabAsset" role="tab" aria-selected="false">资产</button>
+      <button class="toptab" data-view="calendar" id="tabCalendar" role="tab" aria-selected="false">日历</button>
+    </nav>
+    <div class="topbar-actions">
+      <button class="refresh-ico" id="refreshBtn" title="刷新行情">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="netbar" id="netbar" hidden>
+  <span>无法连接行情服务，正在显示的可能不是最新数据</span>
+  <button id="netRetry">重试</button>
+</div>
+
+<div id="watchView">
+<div class="watch-filters">
+  <div class="filter-shell">
+  <nav class="filter-row" aria-label="资产类型筛选">
+    <div class="cats" id="catNav"></div>
+    <div class="cats-add" id="watchActions">
+      <button class="watch-add" id="addBtn" title="添加资产" aria-label="添加资产">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </nav>
+  <nav class="filter-row tagsbar" id="tagsBar" aria-label="标签筛选">
+    <div class="cats" id="tagNav"></div>
+  </nav>
+  </div>
+</div>
+<div class="layout" id="layout"><main id="main"></main></div>
+</div>
+
+<!-- 金十财经日历：接口仅返回本周事件，PC 用月历定位，移动端收敛成当前周。 -->
+<div id="calendarView" class="calendarview" hidden>
+  <section class="calendar-shell">
+    <div class="calendar-head"><span aria-hidden="true"></span><span class="calendar-month-control"><span class="calendar-month" id="calendarMonth"></span><button class="calendar-month-toggle" id="calendarMonthToggle" aria-label="切换月视图" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></span><button class="calendar-config" id="calendarConfigOpen" title="金十设置" aria-label="金十设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg></button></div>
+    <div class="calendar-grid" id="calendarGrid"></div><div class="calendar-events" id="calendarEvents"></div>
+  </section>
+</div>
+<div class="overlay calendar-settings" id="calendarSettings" hidden>
+  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="calendarSettingsTitle">
+    <div class="modal-head"><span id="calendarSettingsTitle">金十设置</span><button class="modal-x" id="calendarSettingsClose" aria-label="关闭金十设置">×</button></div>
+    <div class="modal-body"><p>设置金十 MCP Key 后，可读取本周财经日历。密钥只在服务器环境变量中保存，永不发送到浏览器。</p><div class="field"><label for="calendarKey">JIN10_MCP_TOKEN</label><input id="calendarKey" type="password" placeholder="sk-..." autocomplete="off"><div class="hint" id="calendarKeyHint">请在服务端环境变量中设置。</div></div></div>
+  </section>
+</div>
+
+<!-- 资产视图：持仓估值。与自选是两套独立接口/缓存，切换 tab 不会互相影响。 -->
+<div id="assetView" class="assetview" hidden>
+  <section class="overview">
+    <div class="ov-topbar">
+      <span aria-hidden="true"></span>
+      <div class="curseg" role="tablist" aria-label="显示币种">
+        <button class="on" role="tab" aria-selected="true" data-cur="USD">USD</button>
+        <button role="tab" aria-selected="false" data-cur="CNY">CNY</button>
+      </div>
+      <button class="gearbtn" id="configOpen" title="配置渠道、资产类型与持仓" aria-label="打开持仓配置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+    <div class="ov-blocks">
+      <div class="ov-block block-total">
+        <div class="ov-bh">总资产估值</div>
+        <div class="block-total-in">
+          <div class="ov-total num" id="pfTotal">—</div>
+          <div class="ov-sub" id="pfTotalSub">加载中…</div>
+        </div>
+      </div>
+      <div class="ov-block" id="pfByType"></div>
+      <div class="ov-block" id="pfByChannel"></div>
+    </div>
+  </section>
+
+  <div class="pflayout" id="pfLayout">
+    <section class="panel">
+      <div class="panelbar">
+        <div class="ov-typeswitch" role="tablist" aria-label="切换资产列表分组维度">
+          <button class="on" role="tab" aria-selected="true" data-group="type">按资产类型</button>
+          <button role="tab" aria-selected="false" data-group="channel">按渠道</button>
+        </div>
+        <span class="grp-spacer"></span>
+        <span class="sync-time" id="pfUpdated"></span>
+      </div>
+      <div id="pfBanner"></div>
+      <div class="tblwrap" id="pfTable"></div>
+    </section>
+  </div>
+</div>
+<div class="pf-detail-overlay" id="pfDetailOverlay" aria-hidden="true"></div>
+
+<!-- 持仓配置弹窗：草稿式 —— 打开后所有改动只作用于本地草稿，
+     点「保存配置」才发一次原子写；取消/关闭/点遮罩都丢弃草稿。 -->
+<div class="overlay" id="cfgOverlay" hidden>
+  <div class="modal cfg-modal" role="dialog" aria-modal="true" aria-labelledby="cfgTitle">
+    <div class="cfg-head">
+      <span class="ttl" id="cfgTitle">配置渠道、资产类型与持仓</span>
+      <span class="ver" id="cfgVer"></span>
+      <span class="sp"></span>
+      <button class="modal-x" id="cfgClose" aria-label="关闭配置">×</button>
+    </div>
+    <div class="cfg-body">
+      <div class="cfg-side">
+        <div class="cfg-sec" style="margin-top:0">
+          <div class="cfg-sec-h"><b>渠道</b><span class="cnt" id="cfgChCnt">0</span><span class="sp"></span><button class="chipadd" id="cfgAddCh">＋ 新增</button></div>
+          <div id="cfgChList"></div>
+          <div class="cfg-hint">新增时渠道 ID 由名称派生；重命名只改显示名称，ID 和已关联持仓不变。删除渠道会级联删除其下持仓。</div>
+        </div>
+        <div class="cfg-sec">
+          <div class="cfg-sec-h"><b>资产类型</b><span class="cnt" id="cfgTyCnt">0</span><span class="sp"></span><button class="chipadd" id="cfgAddTy">＋ 新增</button></div>
+          <div id="cfgTyList"></div>
+          <div class="cfg-hint">新增时类型 ID 由名称派生；重命名只改显示名称，ID 和已关联持仓不变。至少保留一个资产类型；删除类型会级联删除其下持仓。</div>
+        </div>
+        <div class="cfg-sec" style="margin-bottom:0">
+          <div class="cfg-sec-h"><b>偏好</b></div>
+          <div class="cfg-field">
+            <label for="cfgCurrency">显示币种</label>
+            <select class="cfg-select" id="cfgCurrency">
+              <option value="USD">USD（规范货币）</option>
+              <option value="CNY">CNY</option>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label for="cfgRate">1 USD = ? CNY</label>
+            <div class="cfg-rate"><input class="cfg-input" id="cfgRate" inputmode="decimal"><span class="unit">CNY</span></div>
+          </div>
+          <div class="cfg-hint">汇率只用于 USD→CNY 的显示换算；服务端估值口径恒为 USD。留空或非法值会保留原汇率。</div>
+        </div>
+      </div>
+      <div class="cfg-main">
+        <div class="cfg-sec-h" style="margin-top:0">
+          <b>持仓</b><span class="cnt" id="cfgHCnt">0</span>
+          <span class="sp"></span>
+          <button class="chipadd" id="cfgAddH">＋ 新增持仓</button>
+        </div>
+        <table class="cfg-tbl">
+          <thead><tr><th>渠道 · 代码</th><th>资产类型</th><th style="text-align:right">数量</th><th>行情分类</th><th></th></tr></thead>
+          <tbody id="cfgRows"></tbody>
+        </table>
+        <div class="cfg-hint">保存会把整份配置（渠道 + 类型 + 持仓 + 偏好）作为一次原子写提交：先整份校验，再在单事务内删改，错误不留下半套数据。</div>
+        <div class="cfg-err" id="cfgErr" hidden></div>
+        <div class="cfg-reload" id="cfgReloadWrap" hidden>
+          <button class="btn" id="cfgReload">重新载入最新配置（丢弃草稿）</button>
+        </div>
+      </div>
+    </div>
+    <div class="cfg-foot">
+      <span class="cfg-draft" id="cfgDraft" hidden><span class="dot"></span>草稿有改动未保存</span>
+      <span class="cfg-clean" id="cfgClean">没有未保存的改动</span>
+      <span class="sp"></span>
+      <button class="btn" id="cfgCancel">取消</button>
+      <button class="btn primary" id="cfgSave">保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新增/编辑弹窗 -->
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog">
+    <div class="modal-head"><span id="modalTitle">新增资产</span><button class="modal-x" id="modalClose">×</button></div>
+    <div class="modal-body">
+      <div class="form-error" id="formError"></div>
+      <div class="field" id="fCat">
+        <label>资产类型</label>
+        <select id="inCat"></select>
+      </div>
+      <div class="field" id="fSym">
+        <label>代码 / 编号</label>
+        <div class="sym-wrap">
+          <input type="text" id="inSym" placeholder="输入代码或名称，如 AAPL / BYD / 比亚迪"
+                 autocomplete="off" autocapitalize="off" spellcheck="false">
+          <div class="sym-drop" id="symDrop" hidden></div>
+        </div>
+        <div class="hint" id="symHint"></div>
+        <div class="err-msg" id="symErr"></div>
+      </div>
+      <div class="field">
+        <label>显示名称（可选）</label>
+        <input type="text" id="inName" placeholder="留空时显示代码" autocomplete="off">
+        <div class="hint">名称由你维护，行情数据不会自动覆盖它。</div>
+      </div>
+      <div class="field">
+        <!-- 「展示日/周/月涨跌幅」多选框已删除（2026-09-21）：涨跌是行情的基本信息，
+             一律显示；某项没有该字段时由前端显示 —，不需要人选择。 -->
+        <label>标签（可选，可多选）</label>
+        <div class="tagpick" id="tagPick"></div>
+        <div class="tagnew">
+          <input type="text" id="inNewTag" placeholder="新建标签，如 电动车" autocomplete="off" maxlength="20">
+          <button class="btn" id="tagCreate" type="button">+ 新建</button>
+        </div>
+        <div class="hint" id="tagPickHint">单击选择标签，双击名称修改；右上角 × 删除。标签可跨资产类型使用。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="modalCancel">取消</button>
+        <button class="btn primary" id="modalSave">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 登录闸门：v1 接口整体要凭据，所以这是进站第一步（读也拦，自选数据本身是私有内容） -->
+<div class="overlay gate" id="authGate">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-head"><span>登录</span></div>
+    <div class="modal-body">
+      <div class="form-error" id="authError"></div>
+      <div class="field">
+        <label>用户名</label>
+        <input type="text" id="authUserInput" autocomplete="username" placeholder="邮箱">
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" id="authPassInput" autocomplete="current-password">
+      </div>
+      <div class="modal-foot">
+        <button class="btn primary" id="authSubmit">登录</button>
+      </div>
+      <div class="gate-note">登录一次后这台设备的浏览器会记住，之后打开不用再输（180 天内）。</div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="sheetOverlay"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-head"><span id="sheetName"></span><button class="x" id="sheetClose">×</button></div>
+  <div class="sheet-sub" id="sheetSub"></div>
+  <div class="sheet-chart" id="sheetChart"></div>
+  <div class="sheet-grid" id="sheetGrid"></div>
+  <div class="sheet-note" id="sheetNote"></div>
+  <div class="sheet-acts" id="sheetActs"></div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ================= 常量 ================= */
+const CATS=[
+  {id:'us', label:'美股', short:'美'},
+  {id:'hk', label:'港股', short:'港'},
+  {id:'a_share', label:'A股', short:'A'},
+  {id:'crypto', label:'加密货币', short:'币'},
+  {id:'index', label:'指数与宏观', short:'其它'}
+];
+const CAT_MAP=Object.fromEntries(CATS.map(c=>[c.id,c]));
+const CUR_CN={USD:'美元',HKD:'港元',CNY:'人民币',USDT:'USDT','%':''};
+const SESSION_KEY='invest_session';   // 登录会话令牌（不是密码）；服务端只存它的 sha256
+const USER_KEY='invest_user';         // 只用来给登录框预填用户名
+
+/* ================= 状态 ================= */
+let assets=[];            // 服务端资产（契约字段）
+let version=0;            // 配置版本（并发控制）
+let quotes={};            // asset_id → 行情快照
+let tags=[];              // 标签清单（服务端返回，与 assets 同一个 version）
+let refreshInfo=null;
+let activeCat=localStorage.getItem('invest_tab')||'star';   // 'star' 或 tag:<id>
+let addContextCat=localStorage.getItem('invest_addcat')||'us';
+let refreshingUI=false;
+let refreshPending=false;   // 手动刷新已发出但服务端还没回报 running 的窗口期
+let calendarEvents=[];
+let calendarSelected='';
+let calendarLoading=false;
+let calendarCursor=new Date();
+
+function calendarDate(value){
+  if(typeof value==='number')return new Date(value<1e12?value*1000:value);
+  const s=String(value||'').trim();
+  if(/^\d{10,13}$/.test(s)){const n=Number(s);return new Date(n<1e12?n*1000:n)}
+  return new Date(s.replace(/-/g,'/'));
+}
+function calendarKey(d){const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`}
+function calendarTime(value){const d=calendarDate(value);return isNaN(d)?'待定':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
+function calendarStars(n){const count=Math.max(0,Math.min(5,Number(n)||0));return '★'.repeat(count)+'☆'.repeat(5-count)}
+function calendarValue(v){return v===null||v===undefined||v===''?'—':escAttr(v)}
+function calendarPublishState(event){
+  const when=calendarDate(event.pub_time);
+  if(!isNaN(when)&&when.getTime()>Date.now())return {label:'待公布',kind:'pending'};
+  if(event.actual===null||event.actual===undefined||event.actual==='')return {label:'未公布',kind:'unpublished'};
+  return {label:'已公布',kind:'published'};
+}
+function calendarToday(){return calendarKey(new Date())}
+function calendarWeekStart(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x}
+function renderCalendar(){
+  const grid=$('#calendarGrid'), eventsHost=$('#calendarEvents');if(!grid||!eventsHost)return;
+  const now=new Date(), today=calendarToday(), first=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth(),1), last=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,0);
+  const start=calendarWeekStart(first), end=new Date(last);end.setDate(end.getDate()+(7-((end.getDay()+6)%7)-1));
+  const byDay=new Map();for(const event of calendarEvents){const d=calendarDate(event.pub_time);if(isNaN(d))continue;const key=calendarKey(d);if(!byDay.has(key))byDay.set(key,[]);byDay.get(key).push(event)}
+  const available=[...byDay.keys()].sort();if(!calendarSelected)calendarSelected=byDay.has(today)?today:(available[0]||today);
+  $('#calendarMonth').textContent=`${now.getFullYear()} 年 ${now.getMonth()+1} 月`;
+  const weekdays=['一','二','三','四','五','六','日'];let html=weekdays.map(x=>`<div class="calendar-weekday">${x}</div>`).join('');
+  const mobileStart=calendarWeekStart(calendarDate(calendarSelected));
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+    const key=calendarKey(d), list=byDay.get(key)||[], muted=d.getMonth()!==now.getMonth(), inWeek=d>=mobileStart&&d<new Date(mobileStart.getFullYear(),mobileStart.getMonth(),mobileStart.getDate()+7);
+    html+=`<button class="calendar-day ${muted?'muted ':''}${key===today?'today ':''}${key===calendarSelected?'selected ':''}${list.length?'has-events ':''}${inWeek?'mobile-week':''}" data-calendar-day="${key}"><span class="calendar-date">${d.getDate()}</span>${list.length?`<span class="calendar-count ${list.some(x=>Number(x.star)>=3)?'hot':''}">${list.length} 项</span>`:''}</button>`;
+  }
+  grid.innerHTML=html;
+  const selected=byDay.get(calendarSelected)||[];
+  if(calendarLoading){eventsHost.innerHTML='<div class="calendar-empty">正在载入本周金融事件…</div>';return}
+  if(!calendarEvents.length){eventsHost.innerHTML='<div class="calendar-empty">本周暂无可展示的财经事件。</div>';return}
+  const label=calendarSelected===today?'今天':calendarSelected.replace(/-/g,' / ');
+  eventsHost.innerHTML=`<div class="calendar-events-title">${label} · ${selected.length} 项事件</div>`+(selected.length?selected.map(e=>{const state=calendarPublishState(e);return `<article class="calendar-event"><time class="calendar-time">${calendarTime(e.pub_time)}</time><span class="calendar-status ${state.kind}">${state.label}</span><span class="calendar-star" aria-label="重要性 ${Number(e.star)||0}">${calendarStars(e.star)}</span><h2 class="calendar-event-title">${escAttr(e.title||'未命名事件')}</h2><div class="calendar-metrics"><span class="calendar-metric">前值 <b>${calendarValue(e.previous)}</b></span><span class="calendar-metric">预期 <b>${calendarValue(e.consensus)}</b></span><span class="calendar-metric">公布 <b>${calendarValue(e.actual)}</b></span></div></article>`}).join(''):'<div class="calendar-empty">当天没有财经事件。</div>');
+}
+async function loadCalendar({force=false}={}){
+  if(calendarLoading)return;calendarLoading=true;renderCalendar();
+  try{const data=await api('/api/v1/calendar'+(force?'?force=1':''));calendarEvents=data.events||[];showNetbar(false)}
+  catch(e){$('#calendarEvents').innerHTML=`<div class="calendar-empty err">财经日历暂不可用：${escAttr(e.message||'请稍后重试')}</div>`;return}
+  finally{calendarLoading=false}renderCalendar();
+}
+
+/* ================= 标签工具 ================= */
+const STAR='tag-star';
+function tagById(id){return tags.find(t=>t.id===id)||null}
+function tagName(id){const t=tagById(id);return t?t.name:'标签'}
+/** 当前页签是不是某个标签页 */
+function activeTagId(sel){
+  const s=sel===undefined?activeCat:sel;
+  return (s&&s.indexOf('tag:')===0)?s.slice(4):null;
+}
+/** 某资产是否属于某标签 */
+function inTag(a,tagId){return (a.tag_ids||[]).includes(tagId)}
+/** 标签内的资产，按该标签自己的顺序（顺序由服务端 tag_order 给出） */
+function assetsInTag(tagId){
+  const ids=tagOrderCache.get(tagId);
+  if(!ids)return assets.filter(a=>inTag(a,tagId));
+  const rank=new Map(ids.map((id,i)=>[id,i]));
+  return assets.filter(a=>inTag(a,tagId))
+    .sort((x,y)=>(rank.get(x.id)??1e9)-(rank.get(y.id)??1e9));
+}
+// 标签内顺序：存在 watchlist_tag_order，无法从 tag_ids 反推，
+// 所以由 GET /assets 的 tag_order 字段一并带回。
+let tagOrderCache=new Map();
+
+/* ================= API 层 ================= */
+function sessionToken(){try{return localStorage.getItem(SESSION_KEY)||''}catch{return''}}
+function setSessionToken(t){try{localStorage.setItem(SESSION_KEY,t)}catch{}}
+function clearSessionToken(){try{localStorage.removeItem(SESSION_KEY)}catch{}}
+
+let pendingAuthRetry=null;
+async function api(path,{method='GET',body}={}){
+  const headers={};
+  if(body!==undefined)headers['content-type']='application/json';
+  const tok=sessionToken();
+  if(tok)headers['authorization']='Bearer '+tok;
+  let resp;
+  try{
+    resp=await fetch(path,{method,headers,body:body!==undefined?JSON.stringify(body):undefined});
+  }catch(e){
+    throw{code:'NETWORK',message:'无法连接服务'};
+  }
+  let json=null;
+  try{json=await resp.json()}catch{}
+  if(resp.status===401){
+    // 会话过期/被吊销：丢掉它，弹闸门，登录成功后把这一次请求补发。
+    clearSessionToken();
+    pendingAuthRetry=()=>api(path,{method,body});
+    assets=[];quotes={};refreshInfo=null;renderAll();
+    openAuthGate('');
+    throw{code:'UNAUTHORIZED',message:'登录已失效，请重新登录'};
+  }
+  if(!resp.ok){
+    throw{status:resp.status,...((json&&json.error)||{code:'INTERNAL',message:'请求失败'})};
+  }
+  return json;
+}
+
+/* ================= 登录闸门 ================= */
+let authGateOpen=false;
+function openAuthGate(msg){
+  if(!authGateOpen){authGateOpen=true;$('#authGate').classList.add('open')}
+  let lastUser='';try{lastUser=localStorage.getItem(USER_KEY)||''}catch{}
+  if(lastUser&&!$('#authUserInput').value)$('#authUserInput').value=lastUser;
+  showAuthError(msg||'');
+  setTimeout(()=>{($('#authUserInput').value?$('#authPassInput'):$('#authUserInput')).focus()},50);
+}
+function closeAuthGate(){authGateOpen=false;$('#authGate').classList.remove('open')}
+function showAuthError(msg){
+  const el=$('#authError');
+  el.textContent=msg||'';
+  el.classList.toggle('show',!!msg);
+}
+async function submitAuth(){
+  const username=$('#authUserInput').value.trim();
+  const password=$('#authPassInput').value;
+  if(!username||!password){showAuthError('用户名和密码都要填');return}
+  const btn=$('#authSubmit');btn.disabled=true;showAuthError('');
+  try{
+    // 不走 api()：登录失败是 401，而 api() 的 401 分支是给「已有会话失效」用的，
+    // 会把登录框再弹一次、把错误信息盖掉。
+    const resp=await fetch('/api/v1/auth/login',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({username,password}),
+    });
+    const d=await resp.json().catch(()=>({}));
+    if(!resp.ok){showAuthError((d&&d.error&&d.error.message)||'登录失败');return}
+    setSessionToken(d.token);
+    try{localStorage.setItem(USER_KEY,username)}catch{}
+    $('#authPassInput').value='';
+    closeAuthGate();
+    const retry=pendingAuthRetry;pendingAuthRetry=null;
+    if(retry){await retry().catch(()=>{});await loadQuotes().catch(()=>{});renderAll()}
+    else await boot();
+  }catch(e){
+    showAuthError(e&&e.message||'无法连接服务');
+  }finally{
+    btn.disabled=false;
+  }
+}
+/* ================= 加载 ================= */
+function showNetbar(on){
+  $('#netbar').hidden=!on;
+  document.body.classList.toggle('has-netbar',on);
+}
+async function loadAssets(){
+  const d=await api('/api/v1/watchlist/assets');
+  assets=d.assets||[]; version=d.version||0;
+  tags=d.tags||[];
+  tagOrderCache=new Map(Object.entries(d.tag_order||{}));
+  // 当前停在某个标签页，而那个标签已被别处删掉 → 退回标星页，不要留在空白页签上
+  const at=activeTagId();
+  if(at&&!tagById(at)){activeCat='star';localStorage.setItem('invest_tab','star')}
+  showNetbar(false);
+}
+async function loadQuotes(){
+  const d=await api('/api/v1/watchlist/quotes');
+  quotes={};
+  for(const q of (d.quotes||[]))quotes[q.asset_id]=q;
+  refreshInfo=d.refresh||null;
+  if(d.version!==version){await loadAssets()}
+  showNetbar(false);
+}
+let timersStarted=false;
+async function boot(){
+  try{
+    const s=await api('/api/v1/auth/session');
+    if(!s.authenticated){
+      // 手里那份已经不作数了（过期/被吊销），先丢掉再弹闸门 ——
+      // 否则每次打开都要多问一次服务端，页面里也留着个假的"已登录"痕迹。
+      clearSessionToken();
+      assets=[];quotes={};refreshInfo=null;renderAll();
+      openAuthGate(s.login_enabled?'':'服务端没有配置登录凭据，先检查 .env');
+      return;
+    }
+    await loadAssets();await loadQuotes();
+  }catch(e){
+    if(e.code==='UNAUTHORIZED')return;   // 闸门已经弹出来了
+    showNetbar(true);
+  }
+  renderAll();
+  if(timersStarted)return;
+  timersStarted=true;
+  // 服务端每 10 分钟自动刷新；这里每分钟拉一次快照，静默更新页面
+  setInterval(()=>{loadQuotes().then(()=>renderAll()).catch(()=>{})},60000);
+  // 相对时间显示每 30s 刷新
+  setInterval(()=>{if(!refreshingUI){renderMain();renderSyncTime()}},30000);
+}
+
+/* ================= 视图映射（服务端 → 原型字段） ================= */
+function viewOf(a){
+  const q=quotes[a.id]||{};
+  return {
+    id:a.id, cat:a.category, sym:a.symbol, code:a.normalized_symbol,
+    name:a.name, sc:true, star:a.is_starred,   // 涨跌一律显示，不再依赖 show_changes
+    q:{
+      price:q.price, cur:q.price_currency,
+      d:q.chg_pct, w:q.week_pct, m:q.month_pct,
+      mcap:q.market_cap, mcur:q.market_cap_currency,
+      pre:q.pre_price, preChg:q.pre_chg_pct, preSess:q.pre_session,
+      src:q.source_name, status:q.status||'unavailable',
+      err:q.error_message, updated:q.last_success_at||q.updated_at
+    }
+  };
+}
+function allViews(){return assets.map(viewOf)}
+function catViews(cat){return allViews().filter(v=>v.cat===cat)}
+
+/* ================= 工具 ================= */
+const $=s=>document.querySelector(s);
+function catLabel(cat){return CAT_MAP[cat]?CAT_MAP[cat].label:cat}
+function relTime(iso){
+  if(!iso)return'—';
+  const s=Math.max(0,(Date.now()-Date.parse(iso))/1000);
+  if(s<60)return'刚刚';
+  if(s<3600)return Math.floor(s/60)+' 分钟前';
+  if(s<86400)return Math.floor(s/3600)+' 小时前';
+  return Math.floor(s/86400)+' 天前';
+}
+function fmtPrice(v,cur){
+  if(v==null)return'<span class="muted-dash">—</span>';
+  let str;
+  if(v>=10000)str=v.toLocaleString('zh-CN',{maximumFractionDigits:0});
+  else if(v>=1)str=v.toFixed(2);
+  else str=v.toFixed(5);
+  return `<span class="price-val">${str}</span><span class="price-cur">${cur||''}</span>`;
+}
+// 最新价：常规收盘价，紧跟一行「→ 盘前 336.24 +0.03%」（美股在扩展时段才有）。
+// 单独开一列会挤掉名称/价格的空间，所以合并进同一格。
+// 当前视图里最新价用的币种。同一页签内通常一致（美股 USD / 港股 HKD），
+// 不一致时（例如「标星」页签混了美股和港股）标题就不带币种，避免写一个错的。
+function priceCurrencyOf(views){
+  const count=new Map();
+  for(const v of views){
+    if(v.q.price==null) continue;
+    const c=v.q.cur||'';
+    if(!c) continue;
+    count.set(c,(count.get(c)||0)+1);
+  }
+  if(!count.size) return { label:'', mixed:false };
+  // 取占多数的那个币种作为列标题。全表只有一种时就是它本身。
+  const sorted=[...count.entries()].sort((a,b)=>b[1]-a[1]);
+  const [top]=sorted[0];
+  const mixed=sorted.length>1;
+  // 混币种时标注「多数」并给出占比，避免让人以为整列都是这个币种
+  return { label: mixed ? `${top}·多数` : top, mixed, total: sorted.reduce((n,[,c])=>n+c,0), topCount: sorted[0][1] };
+}
+
+function priceWithPre(q){
+  // 币种已经在列标题里，这里只给数字
+  const base=fmtPriceNumHTML(q.price);
+  if(q.pre==null||q.preChg==null) return base;
+  const label=q.preSess==='post'?'盘后':'盘前';
+  const cls=q.preChg>0?'up':q.preChg<0?'down':'flat';
+  return `<div class="px-wrap">${base}
+    <div class="px-pre">
+      <span class="pre-tag">${label}</span>
+      <span class="num">${fmtPriceNum(q.pre)}</span>
+      <span class="num ${cls}">${q.preChg>0?'+':''}${q.preChg.toFixed(2)}%</span>
+    </div>
+  </div>`;
+}
+// 表格里的价格只要数字（fmtPrice 会带币种 span，这里不需要）
+// 只给数字（不带币种）的表格用版本；null 仍走 muted-dash
+function fmtPriceNumHTML(v){
+  if(v==null)return '<span class="muted-dash">—</span>';
+  return `<span class="price-val">${fmtPriceNum(v)}</span>`;
+}
+
+function fmtPriceNum(v){
+  if(v==null)return '—';
+  if(v>=10000)return v.toLocaleString('zh-CN',{maximumFractionDigits:0});
+  if(v>=1)return v.toFixed(2);
+  return v.toFixed(5);
+}
+
+function fmtPct(v){
+  if(v==null)return'<span class="muted-dash" title="该字段暂不可用">—</span>';
+  const cls=v>0?'up':v<0?'down':'flat';
+  return `<span class="chg num ${cls}">${v>0?'+':''}${v.toFixed(2)}%</span>`;
+}
+function fmtCap(v,cur){
+  if(v==null)return'<span class="muted-dash">—</span>';
+  const c=CUR_CN[cur]||cur||'';
+  let str;
+  if(v>=1e12)str=(v/1e12).toFixed(2)+' 万亿';
+  else if(v>=1e8)str=(v/1e8).toFixed(0)+' 亿';
+  else str=(v/1e4).toFixed(0)+' 万';
+  return `<span class="mcap-val">${str} ${c}</span>`;
+}
+function toast(msg,isErr){
+  const d=document.createElement('div');
+  d.className='toast'+(isErr?' err':''); d.textContent=msg;
+  $('#toasts').appendChild(d);
+  setTimeout(()=>{d.style.opacity='0';d.style.transition='opacity .3s';setTimeout(()=>d.remove(),320)},2600);
+}
+function errToast(e){
+  if(e&&e.code==='UNAUTHORIZED')return;         // 已弹令牌框
+  if(e&&e.code==='VERSION_CONFLICT'){
+    toast('配置已被其他客户端修改，正在同步…',true);
+    loadAssets().then(()=>renderAll()).catch(()=>{});
+    return;
+  }
+  toast((e&&e.message)||'操作失败，请重试',true);
+}
+function mcapCompact(v){
+  if(v>=1e12)return (v/1e12).toFixed(2)+'万亿';
+  if(v>=1e8)return (v/1e8).toFixed(0)+'亿';
+  return (v/1e4).toFixed(0)+'万';
+}
+
+/* ================= K 线（自绘 SVG，无外部依赖） =================
+   设计约束：单文件、无构建、不从 CDN 动态加载脚本。所以这里手写一段轻量的
+   candlestick 绘制——只需把 OHLC 映射成矩形+影线，不需要库。
+   注意：所有来自上游的字符串（来源名、错误信息）一律不经 innerHTML 拼接。 */
+const IV_LABEL={'1d':'日线','1w':'周线','1M':'月线'};
+const IV_RANGE={'1d':'6mo','1w':'3y','1M':'10y'};
+// 图表缓存：key = assetId|interval，切换资产/周期时不残留旧图
+const candleCache=new Map();
+
+function candleKey(id,iv){return id+'|'+iv}
+
+function fmtAxisTime(ms,iv){
+  const d=new Date(ms);
+  const p=n=>String(n).padStart(2,'0');
+  if(iv==='1d')return `${p(d.getMonth()+1)}/${p(d.getDate())}`;
+  if(iv==='1w')return `${String(d.getFullYear()).slice(2)}/${p(d.getMonth()+1)}`;
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}`;
+}
+function fmtAxisPrice(v){
+  if(v==null)return '';
+  const a=Math.abs(v);
+  if(a>=1000)return v.toLocaleString('zh-CN',{maximumFractionDigits:0});
+  if(a>=1)return v.toFixed(2);
+  return v.toFixed(4);
+}
+
+// 把 candles 画成 SVG。宽高比固定，靠 viewBox 自适应容器宽度。
+// 把 candle 序列降到目标根数：优先「按时间聚合」，聚合比不足时才等距抽样。
+// 这样既避免蜡烛过密看不清，又不会像纯抽样那样丢掉区间内的真实高低点。
+function downsampleCandles(candles,target,iv){
+  const n=candles.length;
+  if(!target||target<1||n<=target)return candles;
+  const step=n/target;
+  // 若每根覆盖的原始根数 >=2，走聚合（OHLC 语义正确：开=首开，收=末收，高=最大，低=最小）
+  if(step>=2){
+    const out=[];
+    // 用边界下标切分（而非累加浮点 step），保证恰好产出 target 根，
+    // 与 displayedCount() 报出的数字一致。
+    for(let k=0;k<target;k++){
+      const from=Math.floor(k*n/target);
+      const to=Math.floor((k+1)*n/target);
+      const slice=candles.slice(from,Math.max(to,from+1));
+      if(!slice.length)continue;
+      let hi=-Infinity,lo=Infinity,vol=0,sawVol=false;
+      for(const c of slice){
+        if(c[2]>hi)hi=c[2];
+        if(c[3]<lo)lo=c[3];
+        if(c[5]!=null){vol+=c[5];sawVol=true}
+      }
+      out.push([slice[0][0],slice[0][1],hi,lo,slice[slice.length-1][4],sawVol?vol:null]);
+    }
+    return out;
+  }
+  // 聚合比 <2：等距抽样，保留首尾
+  const out=[];
+  for(let i=0;i<target;i++){
+    const idx=Math.min(n-1,Math.round(i*(n-1)/(target-1||1)));
+    out.push(candles[idx]);
+  }
+  return out.filter((c,i,a)=>i===0||c!==a[i-1]);
+}
+
+/* ===== K 线视口模型（2026-09-21 联动缩放） =====
+   设计：viewVisible = 当前显示根数（50 起，范围 50..150）；viewEnd = 视口右端在
+   原始序列里的下标（默认取最后一根）。滚轮/拖动改变 viewVisible，蜡烛宽度随之
+   反比变化 —— 这就是用户要的「联动缩放」。
+   关键：缩放时必须在**原始数据**上按新范围重新聚合，不能拿已聚合的结果再切，
+   否则放大会看到假的阶梯（高低点对不上真实数据）。 */
+const VIEW_MIN=50, VIEW_MAX=150, VIEW_DEFAULT=50;
+// 每个资产+周期记住用户缩放到的根数，切换回来时保持
+const viewCount=new Map();
+// 最近一次绘制的几何信息，供十字线命中测试用
+let chartGeo=null;
+
+function viewKeyOf(id,iv){return id+'|'+iv}
+function getViewCount(id,iv){return viewCount.get(viewKeyOf(id,iv))||VIEW_DEFAULT}
+function setViewCount(id,iv,n){
+  const clamped=Math.max(VIEW_MIN,Math.min(VIEW_MAX,Math.round(n)));
+  viewCount.set(viewKeyOf(id,iv),clamped);
+  return clamped;
+}
+
+// 供说明文案用：当前视口想显示多少根（受实际数据量限制）
+function displayedCount(rawLen,id,iv){
+  if(!rawLen)return 0;
+  const want=(id&&iv)?getViewCount(id,iv):VIEW_DEFAULT;
+  return Math.max(1,Math.min(want,rawLen));
+}
+
+// 在原始序列上按 [start,end) 重新聚合到目标根数。
+// 与 downsampleCandles 同源逻辑，但作用在任意切片上，供缩放/平移复用。
+function aggregateRange(raw,start,end,target){
+  const slice=raw.slice(Math.max(0,start),Math.min(raw.length,end));
+  const n=slice.length;
+  if(n===0||target>=n)return slice;
+  const step=n/target;
+  if(step>=2){
+    const out=[];
+    for(let k=0;k<target;k++){
+      const from=Math.floor(k*n/target);
+      const to=Math.floor((k+1)*n/target);
+      const part=slice.slice(from,Math.max(to,from+1));
+      if(!part.length)continue;
+      let hi=-Infinity,lo=Infinity,vol=0,sawVol=false;
+      for(const c of part){
+        if(c[2]>hi)hi=c[2];
+        if(c[3]<lo)lo=c[3];
+        if(c[5]!=null){vol+=c[5];sawVol=true}
+      }
+      out.push([part[0][0],part[0][1],hi,lo,part[part.length-1][4],sawVol?vol:null]);
+    }
+    return out;
+  }
+  const out=[];
+  for(let k=0;k<target;k++){
+    const idx=Math.min(n-1,Math.round(k*(n-1)/(target-1||1)));
+    out.push(slice[idx]);
+  }
+  return out.filter((c,i,a)=>i===0||c!==a[i-1]);
+}
+
+// 取当前视口要画的那一段原始数据
+function viewportSlice(raw,id,iv){
+  const n=raw.length;
+  if(!n)return{slice:[],from:0,to:0,total:0};
+  const want=displayedCount(n,id,iv);
+  // 视口右端对齐最新一根（左滑看更早历史的实现在 viewEnd 里，默认贴右）
+  const endIdx=n;
+  const from=Math.max(0,n-want);
+  return {slice:raw.slice(from,endIdx),from,to:endIdx,total:n,want};
+}
+
+function renderCandleSvg(rawCandles,iv,id){
+  // PC 端详情区调高后给到更大的画布高度；宽度用较宽的 viewBox 让蜡烛铺开
+  const W=900,H=460;
+  const padL=8,padR=64,padT=14,padB=26;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  if(!rawCandles.length)return '';
+
+  const {slice,from,to,total}=viewportSlice(rawCandles,id,iv);
+  if(!slice.length)return '';
+  // 视口内根数已由 want 决定；这里不再二次降采样（want 就是要画的根数）
+  const candles=slice;
+
+  let lo=Infinity,hi=-Infinity;
+  for(const c of candles){
+    if(c[3]<lo)lo=c[3];
+    if(c[2]>hi)hi=c[2];
+  }
+  if(!Number.isFinite(lo)||!Number.isFinite(hi))return '';
+  if(hi===lo){hi=lo+Math.abs(lo||1)*0.01;lo=lo-Math.abs(lo||1)*0.01}
+  const span=hi-lo;
+  const yOf=v=>padT+(hi-v)/span*plotH;
+
+  const n=candles.length;
+  const slot=plotW/n;
+  const bw=Math.max(1,Math.min(slot*0.66,26));
+
+  let grid='',axis='';
+  const ticks=4;
+  for(let i=0;i<=ticks;i++){
+    const v=lo+span*i/ticks, y=yOf(v);
+    grid+=`<line class="cd-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+plotW}" y2="${y.toFixed(1)}"/>`;
+    axis+=`<text class="cd-axis" x="${padL+plotW+6}" y="${(y+3.5).toFixed(1)}">${fmtAxisPrice(v)}</text>`;
+  }
+  const idxs=[0,Math.floor((n-1)/2),n-1].filter((v,i,a)=>a.indexOf(v)===i);
+  let taxis='';
+  for(const i of idxs){
+    const x=padL+slot*i+slot/2;
+    taxis+=`<text class="cd-axis" x="${x.toFixed(1)}" y="${H-8}" text-anchor="middle">${fmtAxisTime(candles[i][0],iv)}</text>`;
+  }
+
+  let bars='';
+  for(let i=0;i<n;i++){
+    const [t,o,h,l,cl]=candles[i];
+    const up=cl>=o;
+    const x=padL+slot*i+slot/2;
+    const yH=yOf(h), yL=yOf(l), yO=yOf(o), yC=yOf(cl);
+    const bodyTop=Math.min(yO,yC);
+    const bodyH=Math.max(1,Math.abs(yC-yO));
+    const cls=up?'up':'down';
+    bars+=`<line class="cd-wick-${cls}" stroke-width="1" x1="${x.toFixed(1)}" y1="${yH.toFixed(1)}" x2="${x.toFixed(1)}" y2="${yL.toFixed(1)}"/>`;
+    bars+=`<rect class="cd-${cls}" x="${(x-bw/2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${bw.toFixed(1)}" height="${bodyH.toFixed(1)}" rx="0.5"/>`;
+  }
+
+  // 十字线 + 提示层（交互时填充；初始为空）
+  const overlay=`<g id="cdCross" style="display:none" pointer-events="none">
+    <line class="cd-cross" x1="0" y1="${padT}" x2="0" y2="${padT+plotH}"/>
+    <line class="cd-cross" x1="${padL}" y1="0" x2="${padL+plotW}" y2="0"/>
+    <circle class="cd-dot" r="3" cx="0" cy="0"/></g>`;
+
+  // preserveAspectRatio 保持默认（xMidYMid meet 会留白），这里改 none 会拉伸蜡烛，
+  // 所以用 CSS 显式高度 + viewBox 等比缩放：宽度自适应，高度由 .chartbox svg 指定。
+  const svg=`<svg viewBox="0 0 ${W} ${H}" role="img" preserveAspectRatio="none"
+    aria-label="${IV_LABEL[iv]||iv} K 线图，显示 ${n} 根，共 ${total} 根"
+    data-from="${from}" data-to="${to}" data-n="${n}">
+    ${grid}${bars}${axis}${taxis}${overlay}</svg>`;
+
+  // 把几何信息留给十字线用（viewBox 坐标，事件里再换算）
+  chartGeo={W,H,padL,padR,padT,padB,plotW,plotH,slot,n,lo,hi,span,candles,iv,total};
+  return svg;
+}
+
+// 渲染图表区域（含加载/空/失败/陈旧态）
+function chartBlockHTML(state,iv,id){
+  if(state.loading)return `<div class="chartbox"><div class="chart-msg">正在加载 ${IV_LABEL[iv]||iv}…</div></div>`;
+  if(state.error){
+    return `<div class="chartbox"><div class="chart-msg err"></div></div>`;
+  }
+  if(!state.candles||!state.candles.length){
+    return `<div class="chartbox"><div class="chart-msg">该资产在当前周期没有可绘制的 K 线数据</div></div>`;
+  }
+  return `<div class="chartbox">${renderCandleSvg(state.candles,iv,id)}</div>`;
+}
+
+// 图表下方的说明行（来源 / 陈旧 / 根数）。用 textContent 写入，不做 innerHTML 拼接。
+function chartNoteText(state,iv){
+  const bits=[];
+  if(state.candles&&state.candles.length){
+    const shown=displayedCount(state.candles.length,window.__chartNoteId,iv);
+    // 视口只画一部分时说明「显示 M 根 / 共 N 根」，避免与图上根数对不上显得像 bug
+    bits.push(shown<state.candles.length
+      ? `${IV_LABEL[iv]||iv} · 显示 ${shown} 根 / 共 ${state.candles.length} 根`
+      : `${IV_LABEL[iv]||iv} · ${state.candles.length} 根`);
+  }
+  if(state.source)bits.push('来源：'+state.source);
+  if(state.updated_at)bits.push('更新：'+relTime(state.updated_at));
+  if(state.limited)bits.push(state.note||'历史深度受数据源限制，实际区间可能短于所选范围');
+  return bits.join('　');
+}
+
+// 拉取 K 线：缓存命中则不重复请求（与后端缓存各自独立，前端这层只是避免来回切周期时抖动）
+// 各周期的 range 档位（与服务端白名单一致）。默认档够看 50 根；
+// 用户放大到超过默认档能提供的量时，自动升档再拉（用户要求「不够的新拉」）。
+const IV_RANGE_LADDER={
+  '1d':[{range:'6mo',cap:127},{range:'1y',cap:251},{range:'2y',cap:501}],
+  '1w':[{range:'3y',cap:158},{range:'5y',cap:262},{range:'10y',cap:523}],
+  '1M':[{range:'10y',cap:121},{range:'max',cap:169}],
+};
+function rangeForWant(iv,want){
+  const ladder=IV_RANGE_LADDER[iv]||IV_RANGE_LADDER['1d'];
+  for(const step of ladder){if(step.cap>=want)return step}
+  return ladder[ladder.length-1];
+}
+
+async function loadCandles(id,iv,{force=false,want=null}={}){
+  const k=candleKey(id,iv);
+  const cur=candleCache.get(k);
+  if(!force&&cur&&cur.candles&&cur.candles.length){
+    // 已有数据是否够覆盖当前想要的根数？够就直接用，不够才升档重拉。
+    const need=want||getViewCount(id,iv);
+    if(cur.candles.length>=need)return cur;
+    // 已经拉到该周期最大档了，再拉也没用
+    const top=(IV_RANGE_LADDER[iv]||[]).at(-1);
+    if(top&&cur.range===top.range)return cur;
+  }
+  const pick=rangeForWant(iv,want||getViewCount(id,iv));
+  const range=pick.range;
+  if(force||!candleCache.has(k)||cur?.loading){
+    candleCache.set(k,{loading:true});
+  }
+  try{
+    const d=await api(`/api/v1/watchlist/assets/${encodeURIComponent(id)}/candles?interval=${encodeURIComponent(iv)}&range=${encodeURIComponent(range)}`);
+    const next={loading:false,candles:d.candles||[],source:d.source_name||'',currency:d.currency||'',
+      stale:!!d.stale,limited:!!d.limited_history,note:d.note||'',updated_at:d.updated_at||null,
+      error:null,range};
+    candleCache.set(k,next);
+    return next;
+  }catch(e){
+    if(e&&e.code==='UNAUTHORIZED'){candleCache.delete(k);throw e}
+    // 升档失败时退回已有缓存，别把已经画好的图清掉
+    if(cur&&cur.candles&&cur.candles.length)return cur;
+    const next={loading:false,candles:[],source:'',currency:'',stale:false,updated_at:null,
+      error:(e&&e.message)||'K 线加载失败',range};
+    candleCache.set(k,next);
+    return next;
+  }
+}
+
+/* ================= 渲染 ================= */
+function renderNav(){
+  // 第一行：内置「标星」+ 市场分类
+  let html=`<button class="cat-item star-tab ${activeCat==='star'?'active':''}" data-cat="star" aria-pressed="${activeCat==='star'}" aria-label="标星资产" title="标星资产">
+    <span class="star-ico" aria-hidden="true">★</span></button>`;
+  for(const c of CATS){
+    html+=`<button class="cat-item ${activeCat===c.id?'active':''}" data-cat="${c.id}" aria-pressed="${activeCat===c.id}" title="${c.label}">
+      <span>${c.short}</span></button>`;
+  }
+  $('#catNav').innerHTML=html;
+  renderTagNav();
+}
+
+// 第二行：用户标签。标星已在第一行，这里跳过。
+function renderTagNav(){
+  // 必须**按 sort_order 排**再渲染：tags 数组的顺序来自初次加载，
+  // 拖动改的是各标签的 sort_order（以及服务端持久化的顺序），不会自动重排数组。
+  // 早先这里直接用 tags.filter(...)，导致拖完页签当场不动、刷新后才变 —— 就是漏了这一步。
+  const userTags=tags.filter(t=>!t.is_star)
+    .sort((a,b)=>(a.sort_order??0)-(b.sort_order??0));
+  const bar=$('#tagsBar');
+  if(!userTags.length){
+    bar.hidden=false;
+    $('#tagNav').innerHTML='<span class="tags-empty">还没有标签，点右上角「＋」可在添加资产时新建</span>';
+    return;
+  }
+  bar.hidden=false;
+  $('#tagNav').innerHTML=userTags.map(t=>{
+    const sel='tag:'+t.id;
+    return `<button class="cat-item ${activeCat===sel?'active':''}" data-cat="${sel}" aria-pressed="${activeCat===sel}"
+      draggable="true" title="标签：${escAttr(t.name)}　拖动可调整标签顺序">
+      <span class="tag-prefix" aria-hidden="true">#</span><span>${escAttr(t.name)}</span></button>`;
+  }).join('');
+}
+function rowsFor(list,sortable){
+  return list.map(a=>{
+    const q=a.q;
+    const wCell=a.sc?fmtPct(q.w):'<span class="muted-dash">—</span>';
+    const mCell=a.sc?fmtPct(q.m):'<span class="muted-dash">—</span>';
+    const dayCell=!a.sc?`<span class="dpill off">已关闭</span>`
+      :(q.status==='unavailable'||q.d==null)?`<span class="dpill flat">—</span>`
+      :`<span class="dpill ${q.d>0?'up':q.d<0?'down':'flat'}">${q.d>0?'+':''}${q.d.toFixed(2)}%</span>`;
+    const starSvg=a.star
+      ?`<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`
+      :`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+    return `<tr class="${q.status==='unavailable'?'unavail':''} ${q.status==='refreshing'?'refreshing':''}" data-id="${a.id}"${sortable?' draggable="true"':''}>
+      <td class="star-cell">
+        <button class="iconbtn star-btn ${a.star?'starred':''}" data-act="star" title="${a.star?'取消标星':'标星'}">${starSvg}</button>
+      </td>
+      <td class="name-cell">
+        <div class="asset-name">${a.name||a.sym}</div>
+        <div class="asset-code">${a.sym}</div>
+      </td>
+      <td>${priceWithPre(q)}</td>
+      <td>${dayCell}</td>
+      <td class="col-wm">${wCell}</td>
+      <td class="col-wm">${mCell}</td>
+      <td>${fmtCap(q.mcap,q.mcur)}</td>
+      <td>
+        <div class="rowact">
+          <button class="iconbtn" data-act="edit" title="编辑">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+          <button class="iconbtn danger" data-act="del" title="删除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+/* ===== 移动端渲染 ===== */
+const mqMobile=window.matchMedia('(max-width: 820px)');
+let isMobile=mqMobile.matches;
+mqMobile.addEventListener('change',()=>{isMobile=mqMobile.matches;closeSheet();closeDetail();closePfDetail();renderAll()});
+
+function mrowHtml(a){
+  const q=a.q;
+  const tagLabel={us:'美',hk:'港',a_share:'A',crypto:'币',index:'其它'}[a.cat];
+  // 移动端价格下方优先显示盘前/盘后（美股在扩展时段才有），其余仍显示市值。
+  // 用户 2026-09-21 要求：有盘前/盘后时用它取代市值 —— 小屏上扩展时段价更有用。
+  let sub;
+  if(q.status==='unavailable')sub=`<span class="s" style="color:var(--err)">${q.err||'行情不可用'}</span>`;
+  else if(q.status==='refreshing')sub=`<span class="s">刷新中…</span>`;
+  else if(q.pre!=null&&q.preChg!=null){
+    const label=q.preSess==='post'?'盘后':'盘前';
+    const cls=q.preChg>0?'up':q.preChg<0?'down':'';
+    sub=`<span class="s mpre"><span class="mpre-tag">${label}</span>`
+      +`<span class="num">${fmtPriceNum(q.pre)}</span>`
+      +`<span class="num ${cls}">${q.preChg>0?'+':''}${q.preChg.toFixed(2)}%</span></span>`;
+  }
+  else if(q.mcap!=null)sub=`<span class="s">市值 ${mcapCompact(q.mcap)}</span>`;
+  else sub=`<span class="s">${relTime(q.updated)}</span>`;
+  let pill;
+  if(!a.sc)pill=`<span class="mpill off">已关闭</span>`;
+  else if(q.status==='unavailable'||q.d==null)pill=`<span class="mpill flat">—</span>`;
+  else pill=`<span class="mpill ${q.d>0?'up':q.d<0?'down':'flat'}">${q.d>0?'+':''}${q.d.toFixed(2)}%</span>`;
+  const priceTxt=q.price==null?'—':(q.price>=10000?q.price.toLocaleString('zh-CN',{maximumFractionDigits:0}):q.price<1?q.price.toFixed(5):q.price.toFixed(2));
+  const priceCls=q.d>0?'up':q.d<0?'down':'';
+  return `<div class="mrow" data-id="${a.id}">
+    <div>
+      <div class="mname">${a.star?'<span class="mstar">★</span>':''}${a.name||a.sym}</div>
+      <div class="mcode"><span class="mtag ${a.cat}">${tagLabel}</span><span class="msym">${a.sym}</span></div>
+    </div>
+    <div class="mprice"><span class="v ${priceCls}">${priceTxt}</span>${sub}</div>
+    ${pill}
+  </div>`;
+}
+function renderMobileMain(){
+  const main=$('#main');
+  const views=allViews();
+  if(views.length===0){
+    main.innerHTML=`<div class="empty">
+      <h3>还没有任何自选资产</h3>
+      <p>从你关注的美股、港股、A股、加密货币或宏观指标开始。</p>
+      <button class="btn primary" onclick="openAdd()">+ 新增第一项资产</button>
+    </div>`;
+    return;
+  }
+  // 标星与自定义标签在移动端同样是「跨市场标签页」，与 PC 走同一套数据源
+  const tagPageId = activeCat==='star' ? STAR : activeTagId();
+  if(tagPageId){
+    const list=assetsInTag(tagPageId);
+    if(list.length===0){
+      const isStar=tagPageId===STAR;
+      main.innerHTML=`<div class="empty">
+        <h3>${isStar?'还没有标星资产':`「${tagName(tagPageId)}」标签下还没有资产`}</h3>
+        <p>${isStar
+          ? '点任意资产打开详情，用「标星」按钮把关注的资产加进来。'
+          : `在新增或编辑资产时勾选「${tagName(tagPageId)}」。`}</p>
+      </div>`;
+      return;
+    }
+    main.innerHTML=`<div class="mlist">${list.map(mrowHtml).join('')}</div>`;
+    return;
+  }
+  const list=assets.filter(a=>a.category===activeCat).map(viewOf);
+  if(list.length===0){
+    main.innerHTML=`<div class="mgroup">${catLabel(activeCat)}</div>
+      <div style="padding:26px 16px;text-align:center;color:var(--ink2);font-size:14.5px;border-bottom:1px solid var(--hairline);background:var(--surface)">
+        该类型暂无资产　<button style="color:var(--accent);font-size:14.5px;font-weight:600" onclick="openAdd('${activeCat}')">+ 新增</button>
+      </div>`;
+    return;
+  }
+  main.innerHTML=`<div class="mlist">${list.map(mrowHtml).join('')}</div>`;
+}
+
+/* ===== 移动端底部面板 ===== */
+let sheetId=null;
+function openSheet(id){
+  sheetId=id; pendingDel=null;
+  detailIv='1d';                 // 换资产就回到日线，不留上一个资产的周期
+  renderSheet();
+  $('#sheetOverlay').classList.add('open');
+  requestAnimationFrame(()=>$('#sheet').classList.add('open'));
+  loadDetailChart(id,detailIv);
+}
+function renderSheet(){
+  const a=assets.find(x=>x.id===sheetId); if(!a){closeSheet();return}
+  const v=viewOf(a), q=v.q;
+  // 上移/下移要在**当前页签的顺序**里判断首尾：标签页用该标签的顺序，分类页用该分类的顺序。
+  const sheetTag = activeCat==='star' ? STAR : activeTagId();
+  const list = sheetTag ? assetsInTag(sheetTag).map(viewOf) : assets.filter(x=>x.category===v.cat).map(viewOf);
+  const i=list.findIndex(x=>x.id===sheetId);
+  $('#sheetName').textContent=v.name||v.sym;
+  $('#sheetSub').textContent=`${v.sym}${v.code&&v.code!==v.sym?' · '+v.code:''} · ${CAT_MAP[v.cat].label}`;
+  const pctCell=x=>x==null?'<span class="flat">—</span>':`<span class="${x>0?'up':x<0?'down':'flat'}">${x>0?'+':''}${x.toFixed(2)}%</span>`;
+  const priceTxt=q.price==null?'—':(q.price>=10000?q.price.toLocaleString('zh-CN',{maximumFractionDigits:0}):q.price<1?q.price.toFixed(5):q.price.toFixed(2));
+  $('#sheetGrid').innerHTML=`
+    <div class="sg"><div class="dl">最新价</div><div class="dv">${priceTxt}<small style="font-size:11px;color:var(--ink3)"> ${q.cur||''}</small></div></div>
+    <div class="sg"><div class="dl">日涨跌</div><div class="dv">${v.sc?pctCell(q.d):'<span class="flat">已关闭</span>'}</div></div>
+    <div class="sg"><div class="dl">周涨跌</div><div class="dv">${v.sc?pctCell(q.w):'<span class="flat">已关闭</span>'}</div></div>
+    <div class="sg"><div class="dl">月涨跌</div><div class="dv">${v.sc?pctCell(q.m):'<span class="flat">已关闭</span>'}</div></div>
+    <div class="sg"><div class="dl">${q.preSess==='post'?'盘后':'盘前'}</div><div class="dv" style="font-size:15px">${
+      q.pre==null?'<span class="flat">—</span>'
+        :`<span class="num">${fmtPriceNum(q.pre)}</span> <span class="${q.preChg>0?'up':q.preChg<0?'down':'flat'}">${q.preChg>0?'+':''}${q.preChg.toFixed(2)}%</span>`}</div></div>
+    <div class="sg"><div class="dl">总市值</div><div class="dv" style="font-size:15px">${q.mcap!=null?fmtCap(q.mcap,q.mcur):'<span class="flat">—</span>'}</div></div>
+    <div class="sg"><div class="dl">更新</div><div class="dv" style="font-size:14px">${relTime(q.updated)}</div></div>`;
+  const notes=[];
+  if(q.status!=='ok')notes.push(`状态：${{refreshing:'刷新中',partial:'部分字段缺失',unavailable:'行情不可用'}[q.status]||q.status}`);
+  if(q.err)notes.push(q.err);
+  if(q.src)notes.push(`来源：${q.src}`);
+  $('#sheetNote').textContent=notes.join('　');
+  // 图表：周期切换 + 画布（数据由 loadDetailChart 异步补入）
+  const ch=$('#sheetChart');
+  ch.innerHTML=`<div class="ivswitch" id="sheetIv"></div>`;
+  const sw=ch.querySelector('#sheetIv');
+  for(const iv of ['1d','1w','1M']){
+    const b=document.createElement('button');
+    b.className='ivbtn'+(iv===detailIv?' active':'');
+    b.dataset.iv=iv; b.textContent=IV_LABEL[iv];
+    sw.appendChild(b);
+  }
+  const host=document.createElement('div');
+  host.id='sheetChartHost';
+  ch.appendChild(host);
+  paintChart(host,null,sheetId,detailIv);
+  // 陈旧标记：换资产/换周期时先清掉旧的，避免残留上一个资产的状态
+  const oldTag=$('#sheetStaleTag'); if(oldTag)oldTag.remove();
+  const oldLim=$('#sheetLimitedTag'); if(oldLim)oldLim.remove();
+  const st=candleCache.get(candleKey(sheetId,detailIv))||{loading:true};
+  if(st.limited){
+    const t=document.createElement('span');
+    t.className='limited-tag'; t.id='sheetLimitedTag'; t.textContent='历史受限';
+    $('#sheetNote').prepend(t);
+  }
+  if(st.stale){
+    const t=document.createElement('span');
+    t.className='stale-tag'; t.id='sheetStaleTag'; t.textContent='缓存陈旧';
+    $('#sheetNote').prepend(t);
+  }
+  $('#sheetActs').innerHTML=`
+    <button class="sabtn ${v.star?'on-star':''}" data-sact="star">${v.star?'★ 已标星':'☆ 标星'}</button>
+    <button class="sabtn" data-sact="up" ${i===0?'disabled':''}>上移</button>
+    <button class="sabtn" data-sact="down" ${i===list.length-1?'disabled':''}>下移</button>
+    <button class="sabtn" data-sact="edit">编辑</button>
+    <button class="sabtn danger ${pendingDel===sheetId?'confirm':''}" data-sact="del">${pendingDel===sheetId?'确认删除':'删除'}</button>`;
+}
+function closeSheet(){
+  sheetId=null; pendingDel=null;
+  $('#sheet').classList.remove('open');
+  $('#sheetOverlay').classList.remove('open');
+}
+
+/* ===== PC 右侧详情面板 =====
+   点击行的非操作区打开；点按钮/拖拽不触发。关闭后列表恢复完整宽度。 */
+let detailId=null;              // 当前详情资产；null = 面板关闭
+let detailIv='1d';              // 当前周期（日/周/月）
+let detailSeq=0;                // 防抖：切换太快时只认最后一次请求
+
+function openDetail(id){
+  if(detailId!==id){detailIv='1d'}   // 换资产时重置回日线，避免带着上一个的周期
+  detailId=id;
+  renderDetail();
+  loadDetailChart(id,detailIv);
+}
+function closeDetail(){
+  detailId=null; detailSeq+=1;
+  const el=$('#detail'); if(el)el.remove();
+  $('#layout').classList.remove('has-detail');
+}
+
+// 建面板骨架（只在第一次或换资产时重建，切周期只更新图表与按钮）
+function ensureDetailShell(){
+  const a=assets.find(x=>x.id===detailId); if(!a)return null;
+  const v=viewOf(a);
+  let el=$('#detail');
+  if(!el){
+    el=document.createElement('aside');
+    el.id='detail'; el.className='detail';
+    $('#layout').appendChild(el);
+    $('#layout').classList.add('has-detail');
+  }
+  el.innerHTML=`
+    <div class="detail-head">
+      <div style="min-width:0">
+        <div class="dt-name"></div>
+        <div class="dt-sub"></div>
+      </div>
+      <button class="dt-x" id="detailClose" title="关闭">×</button>
+    </div>
+    <div class="detail-body">
+      <div class="dt-stats" id="detailStats"></div>
+      <div class="ivswitch" id="ivSwitch"></div>
+      <div id="detailChart"></div>
+      <div class="chart-note" id="detailNote"></div>
+    </div>`;
+  // 名称/代码用 textContent，不拼 innerHTML
+  el.querySelector('.dt-name').textContent=v.name||v.sym;
+  el.querySelector('.dt-sub').textContent=`${v.sym}${v.code&&v.code!==v.sym?' · '+v.code:''} · ${CAT_MAP[v.cat].label}`;
+  el.querySelector('#detailClose').onclick=closeDetail;
+  const sw=el.querySelector('#ivSwitch');
+  for(const iv of ['1d','1w','1M']){
+    const b=document.createElement('button');
+    b.className='ivbtn'+(iv===detailIv?' active':'');
+    b.dataset.iv=iv; b.textContent=IV_LABEL[iv];
+    sw.appendChild(b);
+  }
+  sw.addEventListener('click',e=>{
+    const b=e.target.closest('.ivbtn'); if(!b)return;
+    if(b.dataset.iv===detailIv)return;
+    detailIv=b.dataset.iv;
+    renderDetail();
+    loadDetailChart(detailId,detailIv);
+  });
+  return el;
+}
+
+function renderDetail(){
+  if(isMobile||!detailId)return;
+  const a=assets.find(x=>x.id===detailId);
+  if(!a){closeDetail();return}
+  const el=ensureDetailShell(); if(!el)return;
+  for(const b of el.querySelectorAll('.ivbtn')){
+    b.classList.toggle('active',b.dataset.iv===detailIv);
+  }
+  renderDetailStats(el.querySelector('#detailStats'),viewOf(a));
+  paintChart(el.querySelector('#detailChart'),el.querySelector('#detailNote'),detailId,detailIv);
+}
+
+// 详情页的指标块：列表里删掉的周/月涨跌挪到这里（含最新价与日涨跌，便于一眼看全）
+function renderDetailStats(host,v){
+  if(!host||!v)return;
+  const q=v.q;
+  const pct=x=>x==null?'<span class="flat">—</span>'
+    :`<span class="${x>0?'up':x<0?'down':'flat'}">${x>0?'+':''}${x.toFixed(2)}%</span>`;
+  const cells=[
+    ['最新价', q.price==null?'<span class="flat">—</span>':fmtPrice(q.price,q.cur)],   // 详情页保留币种（没有列标题可承载）
+    ['日涨跌', v.sc?pct(q.d):'<span class="flat">已关闭</span>'],
+    ['周涨跌', v.sc?pct(q.w):'<span class="flat">已关闭</span>'],
+    ['月涨跌', v.sc?pct(q.m):'<span class="flat">已关闭</span>'],
+    // 盘前/盘后：仅美股在扩展时段有值，其余显示「—」。
+    // 涨跌基准＝上一日收盘（用户指定），由服务端算好，这里只负责显示。
+    [q.preSess==='post'?'盘后':'盘前',
+      q.pre==null?'<span class="flat">—</span>'
+        :`<span class="num">${fmtPriceNum(q.pre)}</span><small class="cur"> ${q.cur||''}</small> `
+         +`<span class="pre-chg num ${q.preChg>0?'up':q.preChg<0?'down':'flat'}">${q.preChg>0?'+':''}${q.preChg.toFixed(2)}%</span>`],
+    ['总市值', q.mcap!=null?fmtCap(q.mcap,q.mcur):'<span class="flat">—</span>'],
+    // 列表里删了「更新」与「状态」两列，这里补上（含错误原因）
+    ['行情时间', `<span class="dt-meta">${relTime(q.updated)}</span>`],
+    ['状态', `<span class="dt-meta">${detailStatusText(q)}</span>`],
+  ];
+  host.innerHTML='';
+  for(const [label,val] of cells){
+    const d=document.createElement('div');
+    d.className='dstat';
+    const l=document.createElement('div'); l.className='dstat-l'; l.textContent=label;
+    const v=document.createElement('div'); v.className='dstat-v'; v.innerHTML=val;
+    d.appendChild(l); d.appendChild(v); host.appendChild(d);
+  }
+  // 错误原因单独一行：用 textContent 写入，上游字符串不拼 innerHTML
+  if(q.err){
+    const err=document.createElement('div');
+    err.className='dt-err'; err.textContent=q.err;
+    host.appendChild(err);
+  }
+}
+
+function detailStatusText(q){
+  const map={ok:'正常',refreshing:'刷新中',partial:'部分字段缺失',unavailable:'行情不可用'};
+  return map[q.status]||'不可用';
+}
+
+/* ===== 图表的缩放与十字线交互 =====
+   缩放：滚轮（PC）/ 双指捏合（触摸）/ 按住上下拖动（触摸兜底）。
+   用户要的是「联动缩放」：范围 ↔ 蜡烛宽度成反比，滑到哪都是同一套规则。
+   十字线：鼠标 hover 或单指按住拖动时，显示该根的日期与 OHLC。 */
+function wireChartInteraction(host,id,iv){
+  const svg=host.querySelector('svg');
+  if(!svg||!chartGeo)return;
+  // 用 ResizeObserver / 事件不重绑的方式：每次重绘后重新绑定（innerHTML 会清掉旧监听）
+  const zoomBy=delta=>{
+    const cur=getViewCount(id,iv);
+    // 每次滚轮一档约 8%，至少动 1 根，避免小范围时卡住不动
+    const step=Math.max(1,Math.round(cur*0.08));
+    const next=setViewCount(id,iv,cur+Math.sign(delta)*step);
+    if(next===cur)return;
+    // 想看的根数超过已加载数据 -> 升档新拉（用户要求「不够的新拉」）
+    const st=candleCache.get(candleKey(id,iv));
+    const loaded=st&&st.candles?st.candles.length:0;
+    if(next>loaded&&!ensureMoreData(id,iv,next)){
+      return;                                  // 已在拉取中，等回来再画
+    }
+    repaintChartHost(host,id,iv);
+  };
+
+  svg.addEventListener('wheel',e=>{
+    // 只在图表上滚时拦截，避免影响页面滚动
+    e.preventDefault();
+    // 向下滚（deltaY>0）= 向右/向外 → 看更多根、线变窄（与用户要的「右滑看更多」同向）
+    zoomBy(e.deltaY>0?1:-1);
+  },{passive:false});
+
+  // 触摸：捏合缩放 + 单指按住看十字线
+  let pinchStart=null, dragging=false, lastY=0, moved=false;
+  const distOf=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+
+  svg.addEventListener('touchstart',e=>{
+    if(e.touches.length===2){
+      pinchStart={d:distOf(e.touches),count:getViewCount(id,iv)};
+      dragging=false;
+      clearCross(host);
+    }else if(e.touches.length===1){
+      dragging=true; moved=false; lastY=e.touches[0].clientY;
+      showCrossAt(host,id,iv,e.touches[0]);
+    }
+  },{passive:true});
+
+  svg.addEventListener('touchmove',e=>{
+    if(e.touches.length===2&&pinchStart){
+      e.preventDefault();
+      // 两指张开 = 看更少根（放大），捏合 = 看更多根
+      const ratio=distOf(e.touches)/pinchStart.d;
+      const next=setViewCount(id,iv,pinchStart.count/ratio);
+      if(next!==getViewCount(id,iv))repaintChartHost(host,id,iv);
+      return;
+    }
+    if(dragging&&e.touches.length===1){
+      const t=e.touches[0];
+      if(Math.abs(t.clientY-lastY)>14){moved=true}
+      if(!moved){
+        e.preventDefault();          // 横向为主，阻止 sheet 下拉关闭
+        showCrossAt(host,id,iv,t);
+      }
+    }
+  },{passive:false});
+
+  const endTouch=()=>{pinchStart=null;dragging=false;};
+  svg.addEventListener('touchend',endTouch,{passive:true});
+  svg.addEventListener('touchcancel',()=>{endTouch();clearCross(host)},{passive:true});
+
+  // 鼠标：hover 显示十字线（不改变缩放；缩放交给滚轮）
+  svg.addEventListener('mousemove',e=>showCrossAt(host,id,iv,e));
+  svg.addEventListener('mouseleave',()=>clearCross(host));
+}
+
+// 数据不够时升档重拉；返回 true 表示「已有足够数据，可直接重绘」。
+// 拉取中返回 false（避免并发重复请求），回来后由回调重绘。
+const pendingUpgrade=new Set();
+function ensureMoreData(id,iv,want){
+  const k=candleKey(id,iv);
+  const st=candleCache.get(k);
+  if(st&&st.candles&&st.candles.length>=want)return true;
+  if(pendingUpgrade.has(k))return false;     // 已有升档在进行
+  pendingUpgrade.add(k);
+  loadCandles(id,iv,{want}).then(()=>{
+    pendingUpgrade.delete(k);
+    // 数据回来了：PC 面板与移动端 sheet 各自重绘
+    if(detailId===id&&!isMobile)renderDetail();
+    if(sheetId===id&&isMobile)renderSheetChart();
+  }).catch(()=>{pendingUpgrade.delete(k)});
+  return false;
+}
+
+// 重绘图表本体（缩放后调用），保留容器与提示层
+function repaintChartHost(host,id,iv){
+  const state=candleCache.get(candleKey(id,iv));
+  if(!state||!state.candles||!state.candles.length)return;
+  const box=host.querySelector('.chartbox');
+  if(!box)return;
+  const geo=chartGeo;                       // 保存旧几何以免 innerHTML 后丢失
+  box.innerHTML=renderCandleSvg(state.candles,iv,id);
+  wireChartInteraction(host,id,iv);
+  // 说明文案里的「显示 N 根」要跟着变
+  const noteHost=host.parentElement?.querySelector('.chart-note');
+  if(noteHost)refreshNoteCount(noteHost,state,iv,id);
+}
+
+// 缩放后重画说明行（数据/来源不变，只有「显示 N 根」会变）
+function refreshNoteCount(noteHost,state,iv,id){
+  renderChartNote(noteHost,state,iv,id);
+}
+
+/* ===== 十字线 ===== */
+function clearCross(host){
+  const g=host.querySelector('#cdCross'); if(g)g.style.display='none';
+  const tip=host.querySelector('.cd-tip'); if(tip)tip.remove();
+  if(chartGeo)chartGeo.activeIdx=null;
+}
+
+function showCrossAt(host,id,iv,evt){
+  const svg=host.querySelector('svg'); if(!svg||!chartGeo)return;
+  const g=chartGeo;
+  if(!g.candles||!g.candles.length)return;
+  // 把指针位置换算到 viewBox 坐标
+  const r=svg.getBoundingClientRect();
+  const vx=(evt.clientX-r.left)/r.width*g.W;
+  const vy=(evt.clientY-r.top)/r.height*g.H;
+  // 命中：按 slot 找最近的一根
+  let idx=Math.floor((vx-g.padL)/g.slot);
+  idx=Math.max(0,Math.min(g.n-1,idx));
+  if(!Number.isFinite(idx))return;
+  if(g.activeIdx===idx)return;              // 同一根不重复绘制
+  g.activeIdx=idx;
+
+  const c=g.candles[idx];
+  const x=g.padL+g.slot*idx+g.slot/2;
+  const yOf=v=>g.padT+(g.hi-v)/g.span*g.plotH;
+  const yC=yOf(c[4]);
+
+  const cross=host.querySelector('#cdCross');
+  if(cross){
+    cross.style.display='';
+    const [l1,l2,dot]=cross.children;
+    l1.setAttribute('x1',x); l1.setAttribute('x2',x);
+    l2.setAttribute('y1',vy.toFixed(1)); l2.setAttribute('y2',vy.toFixed(1));
+    dot.setAttribute('cx',x.toFixed(1)); dot.setAttribute('cy',yC.toFixed(1));
+  }
+
+  // 提示框：日期 / 开 / 高 / 低 / 收 / 量。日期本地化；数值用等宽
+  const [t,o,h,l,cl,v]=c;
+  let tip=host.querySelector('.cd-tip');
+  if(!tip){
+    tip=document.createElement('div');
+    tip.className='cd-tip';
+    host.querySelector('.chartbox').appendChild(tip);
+  }
+  const d=new Date(t);
+  const p=n=>String(n).padStart(2,'0');
+  const dateStr=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+  const rows=[
+    ['日期',dateStr],
+    ['开',fmtAxisPrice(o)],['高',fmtAxisPrice(h)],
+    ['低',fmtAxisPrice(l)],['收',fmtAxisPrice(cl)],
+  ];
+  if(v!=null)rows.push(['量',fmtVolume(v)]);
+  tip.innerHTML='';
+  const head=document.createElement('div'); head.className='cd-tip-d'; head.textContent=dateStr;
+  tip.appendChild(head);
+  for(const [k,val] of rows.slice(1)){
+    const line=document.createElement('div'); line.className='cd-tip-r';
+    const kk=document.createElement('span'); kk.className='k'; kk.textContent=k;
+    const vv=document.createElement('span'); vv.className='v'; vv.textContent=val;
+    line.appendChild(kk); line.appendChild(vv); tip.appendChild(line);
+  }
+  // 位置：跟随该根，靠右时翻到左侧，避免溢出
+  const px=(x/g.W)*r.width;
+  const tipW=tip.offsetWidth||110;
+  const left=px+12+tipW>r.width?px-12-tipW:px+12;
+  tip.style.left=Math.max(4,left)+'px';
+  tip.style.top='10px';
+  tip.style.display='';
+}
+
+function fmtVolume(v){
+  if(v==null)return'—';
+  if(v>=1e8)return (v/1e8).toFixed(2)+'亿';
+  if(v>=1e4)return (v/1e4).toFixed(2)+'万';
+  return String(Math.round(v));
+}
+
+// 把某个资产的图表画进指定容器（PC 面板与移动端 sheet 共用）
+function paintChart(host,noteHost,id,iv){
+  const state=candleCache.get(candleKey(id,iv))||{loading:true};
+  window.__chartNoteId=id;               // 供 chartNoteText 解析当前视口根数
+  host.innerHTML=chartBlockHTML(state,iv,id);
+  wireChartInteraction(host,id,iv);
+  if(state.error){
+    const box=host.querySelector('.chart-msg.err');
+    if(box)box.textContent=state.error;     // 上游错误字符串不经 innerHTML
+  }
+  if(noteHost)renderChartNote(noteHost,state,iv,id);
+}
+
+// 说明行的唯一渲染入口：paintChart 与缩放后的重画都走这里，避免两处逻辑漂移。
+function renderChartNote(noteHost,state,iv,id){
+  window.__chartNoteId=id||window.__chartNoteId;   // 供 chartNoteText 解析当前视口根数
+  noteHost.textContent='';
+  if(state.stale){
+    const tag=document.createElement('span');
+    tag.className='stale-tag'; tag.textContent='缓存陈旧';
+    noteHost.appendChild(tag);
+  }
+  if(state.limited){
+    const tag=document.createElement('span');
+    tag.className='limited-tag'; tag.textContent='历史受限';
+    noteHost.appendChild(tag);
+  }
+  const txt=chartNoteText(state,iv);
+  if(txt)noteHost.appendChild(document.createTextNode(txt));
+}
+
+// 预取其余周期的 K 线：用户打开详情后，趁他看当前周期的时间把另外两个也拉好，
+// 这样切日/周/月就是瞬时的（冷拉一次上游要 0.9~4.5 秒，实测 Yahoo 波动很大）。
+// 只预取「还没缓存」的周期，且串行执行，避免和当前请求抢并发。
+let prefetchTimer=null;
+function schedulePrefetch(id,currentIv){
+  clearTimeout(prefetchTimer);
+  prefetchTimer=setTimeout(()=>{
+    // 并行拉剩余两个周期（不串行）—— 串行时第二个要等第一个跑完，
+    // 实测 Yahoo 单次 0.9~4.5 秒，串行会把「切换就绪」推后好几秒。
+    for(const iv of ['1d','1w','1M']){
+      if(iv===currentIv)continue;
+      if(!detailId&&!sheetId)continue;                // 面板已关，不必再拉
+      const st=candleCache.get(candleKey(id,iv));
+      if(st&&(st.candles||[]).length)continue;        // 已有数据
+      if(pendingUpgrade.has(candleKey(id,iv)))continue;
+      // 不 await：发出即返回，谁先回来谁先填缓存
+      loadCandles(id,iv).catch(()=>{});
+    }
+  },120);                                            // 当前周期请求已发出，尽早并行铺开
+}
+
+// 拉数据 → 回来后校验「用户是不是已经切走了」，避免旧响应盖新图
+async function loadDetailChart(id,iv){
+  if(!id)return;
+  detailSeq+=1; const seq=detailSeq;
+  try{
+    await loadCandles(id,iv);
+  }catch(e){ if(e&&e.code==='UNAUTHORIZED')return }
+  if(seq!==detailSeq)return;               // 已切到别的资产/周期，丢弃这次结果
+  if(detailId===id&&detailIv===iv)renderDetail();
+  if(sheetId===id&&isMobile)renderSheetChart();
+  schedulePrefetch(id,iv);                 // 顺手把其余周期也热上
+}
+
+function renderSheetChart(){
+  // 必须画进 #sheetChartHost（#sheetChart 里还有周期切换按钮，整体重绘会把按钮抹掉）
+  const host=$('#sheetChartHost'); if(!host)return;
+  const note=$('#sheetNote');
+  // 两个标记都先清掉再按当前状态重加，避免残留上一个资产/周期的提示
+  const tag=$('#sheetStaleTag'); if(tag)tag.remove();
+  const lim=$('#sheetLimitedTag'); if(lim)lim.remove();
+  paintChart(host,null,sheetId,detailIv);
+  // sheet 的图表说明与指标共用一行 note：这里只追加标记，不覆盖原指标文案
+  const state=candleCache.get(candleKey(sheetId,detailIv))||{loading:true};
+  if(state.limited){
+    const t=document.createElement('span');
+    t.className='limited-tag'; t.id='sheetLimitedTag'; t.textContent='历史受限';
+    note.prepend(t);
+  }
+  if(state.stale){
+    const t=document.createElement('span');
+    t.className='stale-tag'; t.id='sheetStaleTag'; t.textContent='缓存陈旧';
+    note.prepend(t);
+  }
+}
+
+function renderMain(){
+  if(isMobile){renderMobileMain();return}
+  const main=$('#main');
+  if(assets.length===0){
+    main.innerHTML=`<div class="empty">
+      <h3>还没有任何自选资产</h3>
+      <p>从你关注的美股、港股、A股、加密货币或宏观指标开始。</p>
+      <button class="btn primary" onclick="openAdd()">+ 新增第一项资产</button>
+    </div>`;
+    return;
+  }
+  // 周/月涨跌列在详情面板打开时隐藏（见 .has-detail .col-wm），因为此时面板里
+  // 已经有同样的数据，列表再占两列会把名称/价格挤窄。
+  //
+  // 最新价列标题带上币种（如「最新价-USD」），对应地把单元格里的币种去掉 ——
+  // 这样「最新价 + 盘前/盘后」只占两行，列宽能压得更窄。
+  // 币种必须按**当前实际渲染的那批行**取，不能用全部资产：
+  // 「标星」页签可能同时有美股与港股，用全量算会把标题写成一个错的币种。
+  const theadFor=rows=>{
+    const cur=priceCurrencyOf(rows);
+    const title=cur.mixed
+      ? `该分类含多种币种，此列多数为 ${cur.label.replace('·多数','')}（${cur.topCount}/${cur.total} 项）`
+      : '';
+    return `<thead><tr>
+      <th></th><th>名称 / 代码</th>
+      <th${title?` title="${title}"`:''}>最新价${cur.label?'-'+cur.label:''}</th><th>日涨跌</th>
+      <th class="col-wm">周涨跌</th><th class="col-wm">月涨跌</th><th>总市值</th><th></th>
+    </tr></thead>`;
+  };
+  // 「标星」与「标签」页都是**跨市场视图**：一个标签下可以同时有美股和 A 股。
+  // 它们的顺序存在 watchlist_tag_order（每个标签独立），与分类页的 sort_order 无关，
+  // 所以这里传 draggable=true，拖拽走 reorderTag 而不是 reorderCategory。
+  const tagPageId = activeCat==='star' ? STAR : activeTagId();
+  if(tagPageId){
+    const list=tagPageId===STAR
+      ? assetsInTag(STAR)                                   // 标星也是标签，走同一条路径
+      : assetsInTag(tagPageId);
+    if(list.length===0){
+      const isStar=tagPageId===STAR;
+      main.innerHTML=`<div class="empty">
+        <h3>${isStar?'还没有标星资产':`「${tagName(tagPageId)}」标签下还没有资产`}</h3>
+        <p>${isStar
+          ? '点行首的星形图标即可标星；也可以在编辑资产时勾选「标星」标签。'
+          : `在新增或编辑资产时勾选「${tagName(tagPageId)}」，或切换到这个标签下新增。`}</p>
+        ${isStar?'':`<button class="btn primary" onclick="openAdd(null,'${tagPageId}')">+ 新增到「${tagName(tagPageId)}」</button>`}
+      </div>`;
+      return;
+    }
+    const views=list.map(viewOf);
+    main.innerHTML=`<div class="tablewrap"><table>${theadFor(views)}<tbody>${rowsFor(views,true)}</tbody></table></div>`
+      +`<p class="drag-tip">提示：按住任意行拖动即可调整「${tagPageId===STAR?'标星':tagName(tagPageId)}」下的排序，不影响其他标签。</p>`;
+    return;
+  }
+  {
+    const list=assets.filter(a=>a.category===activeCat).map(viewOf);
+    if(list.length===0){
+      main.innerHTML=`<div class="empty">
+        <h3>${catLabel(activeCat)}暂无资产</h3>
+        <p>切换到其他类型，或在这里新增一项${catLabel(activeCat)}。</p>
+        <button class="btn primary" onclick="openAdd('${activeCat}')">+ 新增${catLabel(activeCat)}</button>
+      </div>`;
+      return;
+    }
+    main.innerHTML=`<div class="tablewrap"><table>${theadFor(list)}<tbody>${rowsFor(list,true)}</tbody></table></div>`
+      +`<p class="drag-tip">提示：按住任意行拖动即可调整排序。</p>`;
+  }
+}
+function renderAll(){
+  renderNav();renderMain();renderSyncTime();
+  if(sheetId)renderSheet();
+  if(detailId&&!isMobile)renderDetail();
+}
+
+// 刷新按钮旁的上次更新时间。数据来自服务端 refresh.last.finished_at，
+// 没有就用最新行情快照的 updated 兜底；明显陈旧时变色提醒。
+function renderSyncTime(){
+  const el=$('#syncTime'); if(!el)return;
+  let iso=(refreshInfo&&refreshInfo.last&&refreshInfo.last.finished_at)||null;
+  if(!iso){
+    let newest=null;
+    for(const k in quotes){
+      const q=quotes[k]; if(!q)continue;
+      const u=q.last_success_at||q.updated_at;   // 原始快照字段（viewOf 才映射成 updated）
+      if(u&&(!newest||u>newest))newest=u;
+    }
+    iso=newest;
+  }
+  if(!iso){el.textContent='';el.classList.remove('stale');return}
+  const ageMs=Date.now()-Date.parse(iso);
+  const stamp=absTimeShort(iso);
+  el.textContent=refreshRunning()?'正在刷新…':`更新于 ${stamp}`;
+  // 超过两倍刷新间隔（默认 10 分钟）视为陈旧
+  el.classList.toggle('stale',!refreshRunning()&&ageMs>20*60*1000);
+  el.title=`上次刷新：${absTimeShort(iso)}`+(refreshRunning()?'（正在刷新）':'');
+}
+function refreshRunning(){return refreshPending||!!(refreshInfo&&refreshInfo.running)}
+// 同一天的只给 HH:MM，跨天才带日期，避免顶栏过长
+function absTimeShort(iso){
+  const d=new Date(iso); if(isNaN(d))return'—';
+  const p=n=>String(n).padStart(2,'0');
+  const now=new Date();
+  const sameDay=d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&d.getDate()===now.getDate();
+  const hm=`${p(d.getHours())}:${p(d.getMinutes())}`;
+  return sameDay?hm:`${p(d.getMonth()+1)}-${p(d.getDate())} ${hm}`;
+}
+
+/* ================= 刷新（真实服务） ================= */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// 刷新后轮询：改成自适应退避。
+// 原来是固定 sleep(1500) —— 服务端任务 1 秒就跑完了，用户却要等 1.5 秒才开始看到结果，
+// 之后每轮还要再等 1.5 秒。实测点击到结束 1.5~4.6 秒，其中大部分是在等这个固定间隔。
+async function pollQuotesUntilDone(deadlineMs){
+  const deadline=Date.now()+deadlineMs;
+  let wait=200;                              // 先快问一次，命中「已经跑完」的常见情况
+  const MAX_WAIT=1500;
+  while(Date.now()<deadline){
+    await sleep(wait);
+    try{
+      const d=await api('/api/v1/watchlist/quotes');
+      quotes={};
+      for(const q of (d.quotes||[]))quotes[q.asset_id]=q;
+      refreshInfo=d.refresh||null;
+      if(d.version!==version){await loadAssets()}
+      renderAll();
+      if(!refreshInfo||!refreshInfo.running)return;
+      // 还在跑：逐步拉长间隔，避免长时间刷新时把服务器问爆
+      wait=Math.min(MAX_WAIT,Math.round(wait*1.6));
+    }catch(e){return}
+  }
+}
+async function doRefresh(force){
+  if(refreshingUI)return;
+  refreshingUI=true; refreshPending=true;
+  $('#refreshBtn').disabled=true; $('#refreshBtn').classList.add('spinning');
+  for(const id in quotes){if(quotes[id].status!=='unavailable')quotes[id].status='refreshing'}
+  renderAll();
+  try{
+    await api('/api/v1/watchlist/refresh'+(force?'?force=1':''),{method:'POST'});
+    await pollQuotesUntilDone(90*1000);
+    const last=refreshInfo&&refreshInfo.last;
+    if(last&&last.status==='failed')toast('刷新失败，已保留上次行情',true);
+    else if(last&&last.failed_count>0)toast(`已刷新，${last.failed_count} 项暂时不可用（保留旧值）`);
+    else toast('行情已更新');
+  }catch(e){
+    errToast(e);
+    loadQuotes().then(()=>renderAll()).catch(()=>{});
+  }finally{
+    refreshingUI=false; refreshPending=false;
+    $('#refreshBtn').disabled=false; $('#refreshBtn').classList.remove('spinning');
+    renderSyncTime();
+  }
+}
+
+/* ================= 增删改（真实服务） ================= */
+let editingId=null, pendingDel=null;
+/* ===== 标签选择器（新增/编辑弹窗） =====
+   用户确认的流程：选市场 → 输代码 → lookup 识别 → 再选标签（可留空）。
+   标签多选里，「标星」是内置标签，勾它等同于标星。 */
+let pickedTags=new Set();
+// 正在就地改名的标签 id（null = 没有）
+let renamingTagId=null;
+let pendingTagDel=null, pendingTagDelTimer=null;
+function renderTagPick(){
+  const box=$('#tagPick');
+  if(!tags.length){
+    box.innerHTML='';
+    return;
+  }
+  box.innerHTML=tags.map(t=>{
+    const on=pickedTags.has(t.id);
+    const ic=t.is_star?'<span class="star-ico">★</span>':'';
+    // 内置「标星」标签不给改名/删除入口 —— 服务端也会拒绝，界面上就别露出按钮。
+    if(t.is_star){
+      return `<span class="tagchi ${on?'on':''}"><button type="button" class="tagchi-select" data-tag="${t.id}" aria-pressed="${on}">${ic}<span>${escAttr(t.name)}</span></button></span>`;
+    }
+    if(renamingTagId===t.id){
+      return `<span class="tagchi ${on?'on':''} renaming" data-tag="${t.id}">${ic}
+        <input class="tagrename" data-rename="${t.id}" value="${escAttr(t.name)}" maxlength="20" autocomplete="off">
+      </span>`;
+    }
+    return `<span class="tagchi ${on?'on':''}">
+      <button type="button" class="tagchi-select" data-tag="${t.id}" aria-pressed="${on}" title="单击选择，双击修改名称">${ic}<span>${escAttr(t.name)}</span></button>
+      <button type="button" class="tagop del ${pendingTagDel===t.id?'confirm':''}" data-tagdel="${t.id}" title="删除${escAttr(t.name)}" aria-label="${pendingTagDel===t.id?'确认删除':'删除'}${escAttr(t.name)}">${pendingTagDel===t.id?'确认？':'×'}</button>
+    </span>`;
+  }).join('');
+  // 改名输入框：自动聚焦并全选
+  const inp=box.querySelector('.tagrename');
+  if(inp){inp.focus();inp.select();}
+}
+// 属性值转义：标签名是用户输入，直接拼进 value="" 会被引号截断
+function escAttr(s){return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+/* ===== 标签的改名与删除（就在新增/编辑资产弹窗里）=====
+   用户要求：在新增资产页面直接改标签、直接删标签。 */
+async function renameTag(id,name){
+  const clean=String(name??'').trim();
+  if(!clean){renamingTagId=null;renderTagPick();return}
+  const before=tagById(id);
+  if(before&&before.name===clean){renamingTagId=null;renderTagPick();return}
+  try{
+    const d=await api('/api/v1/watchlist/tags/'+id,
+      {method:'PATCH',body:{name:clean,expected_version:version}});
+    version=d.version;
+    const t=tags.find(x=>x.id===id);
+    if(t)Object.assign(t,d.tag);
+    sortTagsLocal();
+    renamingTagId=null;
+    renderTagPick(); renderTagNav();
+    if(activeTagId()===id)renderMain();     // 正在看这个标签页，标题要跟着变
+    toast(`标签已改名为「${d.tag.name}」`);
+  }catch(e){
+    renamingTagId=null; renderTagPick();
+    errToast(e);
+  }
+}
+// 删除标签：两段式确认（与列表里删资产的手势一致，避免误删）
+async function deleteTag(id){
+  const t=tagById(id); if(!t)return;
+  if(pendingTagDel!==id){
+    pendingTagDel=id;
+    renderTagPick();
+    clearTimeout(pendingTagDelTimer);
+    pendingTagDelTimer=setTimeout(()=>{pendingTagDel=null;if($('#overlay').classList.contains('open'))renderTagPick()},3000);
+    return;
+  }
+  clearTimeout(pendingTagDelTimer); pendingTagDel=null;
+  try{
+    const d=await api('/api/v1/watchlist/tags/'+id,{method:'DELETE'});
+    version=d.version;
+    tags=tags.filter(x=>x.id!==id);
+    tagOrderCache.delete(id);
+    pickedTags.delete(id);
+    // 正在看这个标签页 → 退回标星页，别停在已删除的页签上
+    if(activeTagId()===id){activeCat='star';localStorage.setItem('invest_tab','star')}
+    await loadAssets();
+    renderTagPick(); renderAll();
+    toast(`已删除标签「${t.name}」（资产保留）`);
+  }catch(e){errToast(e)}
+}
+function sortTagsLocal(){
+  tags.sort((a,b)=>(b.is_star?1:0)-(a.is_star?1:0)||a.sort_order-b.sort_order);
+}
+$('#tagPick').addEventListener('click',e=>{
+  const dl=e.target.closest('[data-tagdel]');
+  if(dl){e.preventDefault();e.stopPropagation();deleteTag(dl.dataset.tagdel);return}
+  if(e.target.closest('.tagrename'))return;      // 正在改名，别当成切换
+  const b=e.target.closest('[data-tag]'); if(!b)return;
+  const id=b.dataset.tag;
+  if(pickedTags.has(id))pickedTags.delete(id); else pickedTags.add(id);
+  const on=pickedTags.has(id);
+  b.setAttribute('aria-pressed',String(on));
+  b.closest('.tagchi').classList.toggle('on',on);
+});
+$('#tagPick').addEventListener('dblclick',e=>{
+  const b=e.target.closest('.tagchi-select[data-tag]');
+  if(!b||b.dataset.tag===STAR)return;
+  // 两次 click 会把选中状态切回原样；双击仅进入改名。
+  renamingTagId=b.dataset.tag;
+  renderTagPick();
+});
+// 改名的回车/失焦提交、Esc 取消
+$('#tagPick').addEventListener('keydown',e=>{
+  const chip=e.target.closest('.tagchi-select[data-tag]');
+  if(chip&&e.key==='F2'&&chip.dataset.tag!==STAR){
+    e.preventDefault();renamingTagId=chip.dataset.tag;renderTagPick();return;
+  }
+  const inp=e.target.closest('.tagrename'); if(!inp)return;
+  if(e.key==='Enter'){e.preventDefault();renameTag(inp.dataset.rename,inp.value)}
+  else if(e.key==='Escape'){e.preventDefault();renamingTagId=null;renderTagPick()}
+});
+$('#tagPick').addEventListener('focusout',e=>{
+  const inp=e.target.closest('.tagrename'); if(!inp)return;
+  // 失焦也提交（用户点了别处就算改完了）；用 setTimeout 让 Esc/回车先跑
+  setTimeout(()=>{
+    const still=$('#tagPick').querySelector('.tagrename');
+    if(still===inp)renameTag(inp.dataset.rename,inp.value);
+  },0);
+});
+async function createTagInline(){
+  const inp=$('#inNewTag');
+  const name=inp.value.trim();
+  if(!name)return;
+  try{
+    const d=await api('/api/v1/watchlist/tags',
+      {method:'POST',body:{name,expected_version:version}});
+    version=d.version;
+    if(d.existed&&!tags.some(t=>t.id===d.tag.id)){
+      // 理论上不会发生（清单已带回），保险起见补进去
+    }
+    if(!tags.some(t=>t.id===d.tag.id))tags.push(d.tag);
+    tags.sort((a,b)=>(b.is_star?1:0)-(a.is_star?1:0)||a.sort_order-b.sort_order);
+    pickedTags.add(d.tag.id);       // 新建后自动勾上（用户就是想给它归类）
+    inp.value='';
+    renderTagPick();
+    // 标签栏也要立刻更新 —— 用户建完标签就想在下面那一行看到它、能选中它。
+    renderTagNav();
+    toast(d.existed?`标签「${d.tag.name}」已存在，已勾选`:`已新建标签「${d.tag.name}」`);
+  }catch(e){errToast(e)}
+}
+$('#tagCreate').onclick=createTagInline;
+$('#inNewTag').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();createTagInline()}
+});
+
+function openAdd(cat,tagId){
+  editingId=null;
+  renamingTagId=null; pendingTagDel=null;
+  $('#modalTitle').textContent='新增资产';
+  $('#fCat').style.display='';
+  $('#inCat').value=cat&&cat!=='star'?cat:addContextCat;
+  $('#inSym').value=''; $('#inSym').disabled=false;
+  $('#inName').value='';
+  // 从某个标签页点「新增」进来时，预勾该标签（用户此刻的意图就是放进这个标签）
+  pickedTags=new Set(tagId?[tagId]:[]);
+  $('#inNewTag').value='';
+  renderTagPick();
+  $('#formError').classList.remove('show');
+  $('#fSym').classList.remove('error');
+  $('#symHint').dataset.suggest='';
+  closeSymDrop();
+  syncHint(); $('#overlay').classList.add('open');
+  setTimeout(()=>$('#inSym').focus(),50);
+}
+function openEdit(id){
+  const a=assets.find(x=>x.id===id); if(!a)return;
+  editingId=id;
+  renamingTagId=null; pendingTagDel=null;
+  $('#modalTitle').textContent='编辑资产';
+  $('#fCat').style.display='none';
+  $('#inSym').value=a.symbol; $('#inSym').disabled=true; closeSymDrop();
+  $('#inName').value=a.name||'';
+  pickedTags=new Set(a.tag_ids||[]);
+  $('#inNewTag').value='';
+  renderTagPick();
+  $('#formError').classList.remove('show');
+  $('#fSym').classList.remove('error');
+  $('#overlay').classList.add('open');
+  setTimeout(()=>$('#inName').focus(),50);
+}
+function closeModal(){
+  $('#overlay').classList.remove('open');editingId=null;closeSymDrop();
+  renamingTagId=null;pendingTagDel=null;clearTimeout(pendingTagDelTimer);
+}
+function syncHint(){
+  const hints={
+    us:'输入股票代码，如 AAPL、NVDA',
+    hk:'输入 1–5 位港股编号，可带前导零，如 0700、02015',
+    a_share:'输入 6 位证券代码，如 600519、000001',
+    crypto:'输入币种代码或 USDT 交易对，如 BTC、SOL、HYPE',
+    index:'输入行情代码，如 ^TNX、.IXIC、GC=F'
+  };
+  const suggest=$('#symHint').dataset.suggest||'';
+  $('#symHint').textContent=(hints[$('#inCat').value]||'')+(suggest?`　识别：${suggest}`:'');
+}
+function validateSym(cat,sym){
+  if(!sym)return'请输入代码';
+  if(cat==='a_share'&&!/^\d{6}$/.test(sym))return'A股需要 6 位数字代码';
+  if(cat==='hk'&&!/^\d{1,5}$/.test(sym))return'港股编号应为 1–5 位数字';
+  if(cat==='crypto'&&!/^[A-Z0-9]{2,10}$/.test(sym))return'币种代码格式不正确';
+  if(cat==='us'&&!/^[A-Z.]{1,6}$/.test(sym))return'美股代码格式不正确';
+  if(cat==='index'&&!/^[A-Z^.=0-9]{1,10}$/.test(sym))return'行情代码格式不正确';
+  return null;
+}
+/* 代码识别失败：把服务端透出的技术细节收进 details，只给用户可行动的措辞 */
+function lookupErrText(e){
+  const detail=(e&&e.details&&(e.details.message||e.details.reason))||'';
+  if(e&&e.code==='SYMBOL_LOOKUP_FAILED'&&/(404|not found|HTTP)/i.test(detail||e.message||''))
+    return'该代码在所选类型下取不到行情，请检查类型是否选错（指数类请选「指数与宏观」）';
+  return (e&&e.message)||'无法识别该代码';
+}
+function handleSaveErr(e){
+  if(e.code==='SYMBOL_LOOKUP_FAILED'){$('#fSym').classList.add('error');$('#symErr').textContent=lookupErrText(e)}
+  else if(e.code==='DUPLICATE_ASSET'){$('#formError').textContent=e.message;$('#formError').classList.add('show')}
+  else if(e.code==='VALIDATION_ERROR'){$('#fSym').classList.add('error');$('#symErr').textContent=e.message}
+  else errToast(e);
+}
+async function saveModal(){
+  const cat=$('#inCat').value, sym=$('#inSym').value.trim().toUpperCase();
+  const name=$('#inName').value.trim();
+  const tagIds=[...pickedTags];
+  if(editingId){
+    const btn=$('#modalSave'); btn.disabled=true;
+    try{
+      const d=await api('/api/v1/watchlist/assets/'+editingId,
+        {method:'PATCH',body:{name,tag_ids:tagIds,expected_version:version}});
+      version=d.version;
+      await loadAssets();     // 标签变了会影响侧边栏计数与标签页内容，统一重载
+      closeModal(); toast('已保存');
+      if(!isMobile)renderAll(); else renderAll();
+    }catch(e){handleSaveErr(e)}
+    finally{btn.disabled=false}
+    return;
+  }
+  const err=validateSym(cat,sym);
+  if(err){$('#fSym').classList.add('error');$('#symErr').textContent=err;return}
+  if(assets.some(a=>a.category===cat&&a.symbol===sym)){
+    $('#formError').textContent='该资产已在自选中';$('#formError').classList.add('show');return;
+  }
+  addContextCat=cat; localStorage.setItem('invest_addcat',cat);
+  const btn=$('#modalSave'); btn.disabled=true; btn.textContent='识别中…';
+  try{
+    await api('/api/v1/watchlist/assets',
+      {method:'POST',body:{category:cat,symbol:sym,name,tag_ids:tagIds,verify:true,expected_version:version}});
+    await loadAssets();
+    closeModal();
+    toast(`已添加 ${name||sym}`);
+    doRefresh(true);   // 新资产立即拉行情（force 绕过 30s 合并窗口）
+  }catch(e){handleSaveErr(e)}
+  finally{btn.disabled=false; btn.textContent='保存'}
+}
+/* ===== 排序持久化 =====
+   用户要求「先改本地，稍后提交」。但需求说明 §2.5 要求顺序修改"立即保存、失败要保留修改并反馈"，
+   而纯延迟提交会在「拖完就关页面」「拖完切设备」时静默丢数据。
+   折中：本地立即生效 → 400ms 防抖提交 → 页面隐藏/卸载时强制 flush。
+   窗口很短，既不会打断连续拖动，也不会留下几十秒的丢失窗口。 */
+let pendingOrder=null;        // {scope:{kind,tagId|cat}, ids:[...]}
+let orderTimer=null;
+const ORDER_DEBOUNCE_MS=400;
+
+function persistOrder(catOrScope){
+  const scope = typeof catOrScope==='string' ? {kind:'cat',cat:catOrScope} : catOrScope;
+  const ids = scope.kind==='tag' ? assetsInTag(scope.tagId).map(a=>a.id)
+                                 : assets.filter(a=>a.category===scope.cat).map(a=>a.id);
+  pendingOrder={scope,ids};
+  if(orderTimer)clearTimeout(orderTimer);
+  orderTimer=setTimeout(flushOrder,ORDER_DEBOUNCE_MS);
+}
+
+async function flushOrder(){
+  if(orderTimer){clearTimeout(orderTimer);orderTimer=null}
+  const job=pendingOrder; if(!job)return;
+  pendingOrder=null;
+  const {scope,ids}=job;
+  const path = scope.kind==='tag'
+    ? `/api/v1/watchlist/tags/${encodeURIComponent(scope.tagId)}/order`
+    : `/api/v1/watchlist/categories/${encodeURIComponent(scope.cat)}/order`;
+  try{
+    const d=await api(path,{method:'PUT',body:{ids,expected_version:version}});
+    version=d.version;
+    // 服务端已确认，用返回值刷新本地顺序缓存（避免与并发写入产生偏差）
+    if(scope.kind==='tag')tagOrderCache.set(scope.tagId,ids);
+    else await loadAssets();
+  }catch(e){
+    // VERSION_CONFLICT 交给 errToast 走既有的「重新同步」路径（它自己会 loadAssets），
+    // 不要在这里改写成普通的「排序未保存」，否则并发冲突会退化成一条错误提示。
+    if(e&&e.code==='VERSION_CONFLICT'){errToast(e);return}
+    errToast(Object.assign({},e,{message:'排序未保存：'+(e.message||'')}));
+    // 回滚到服务端真相，别让界面停在一个没落库的顺序上
+    try{await loadAssets();renderAll()}catch(_){}
+  }
+}
+// 页面被隐藏/卸载时立刻把待提交的顺序送出去 —— 这是"延迟提交"不丢数据的关键。
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flushOrder()});
+window.addEventListener('pagehide',()=>{flushOrder()});
+
+function moveAssetLocal(id,dir){
+  const a=assets.find(x=>x.id===id); if(!a)return false;
+  // 标签页里"上移/下移"要在**该标签的顺序**里换位，而不是分类顺序
+  const t=activeTagId();
+  if(activeCat==='star'||t){
+    const tid=activeCat==='star'?STAR:t;
+    const list=assetsInTag(tid);
+    const idx=list.findIndex(x=>x.id===id);
+    const swap=list[idx+dir]; if(!swap)return false;
+    const ids=list.map(x=>x.id);
+    ids[idx]=swap.id; ids[idx+dir]=a.id;
+    tagOrderCache.set(tid,ids);
+    return true;
+  }
+  const sameCat=assets.filter(x=>x.category===a.category);
+  const idx=sameCat.indexOf(a);
+  const swap=sameCat[idx+dir]; if(!swap)return false;
+  const gi=assets.indexOf(a), gj=assets.indexOf(swap);
+  assets[gi]=swap; assets[gj]=a;
+  return true;
+}
+async function moveAsset(id,dir){
+  if(!moveAssetLocal(id,dir))return;
+  renderAll();renderSheet();
+  const s=dragScope();
+  persistOrder(s.kind==='tag'?s:assets.find(x=>x.id===id).category);
+}
+async function toggleStar(id){
+  const a=assets.find(x=>x.id===id); if(!a)return;
+  // 标星 = 内置「标星」标签的成员关系，走同一条路径（服务端会同步 is_starred 列）
+  const next=!a.is_starred;
+  try{
+    const d=await api('/api/v1/watchlist/assets/'+id,
+      {method:'PATCH',body:{is_starred:next,expected_version:version}});
+    version=d.version; Object.assign(a,d.asset);
+    await loadAssets();
+    renderAll(); if(sheetId===id)renderSheet();
+  }catch(e){errToast(e)}
+}
+function dropReorder(dragId,targetId,below){
+  const scope=dragScope();
+  const da=assets.find(x=>x.id===dragId), ta=assets.find(x=>x.id===targetId);
+  if(!da||!ta)return;
+  if(scope.kind==='cat'&&da.category!==ta.category)return;
+  // 先按**当前作用域**（标签页=该标签的顺序；分类页=该分类的顺序）取出序列
+  const list = scope.kind==='tag'
+    ? assetsInTag(scope.tagId).filter(x=>x.id!==dragId)
+    : assets.filter(x=>x.category===scope.cat&&x.id!==dragId);
+  const ti=list.findIndex(x=>x.id===targetId);
+  if(ti<0)return;
+  list.splice(below?ti+1:ti,0,da);
+  const ids=list.map(x=>x.id);
+  if(scope.kind==='tag'){
+    tagOrderCache.set(scope.tagId,ids);
+    renderAll();
+    persistOrder(scope);
+  }else{
+    const byId=new Map(assets.map(a=>[a.id,a]));
+    let k=0;
+    assets=assets.map(x=>x.category===scope.cat?byId.get(ids[k++]):x);
+    renderAll();
+    persistOrder(scope.cat);
+  }
+}
+async function reallyDelete(id){
+  try{
+    const d=await api('/api/v1/watchlist/assets/'+id,{method:'DELETE'});
+    version=d.version;
+    assets=assets.filter(x=>x.id!==id);
+    delete quotes[id];
+    // 清掉该资产的前端 K 线缓存，否则同名重建会复用旧图
+    for(const iv of ['1d','1w','1M'])candleCache.delete(candleKey(id,iv));
+    if(detailId===id)closeDetail();
+    renderAll(); toast('已删除资产');
+  }catch(e){errToast(e)}
+}
+function requestDelete(id){
+  const btn=document.querySelector(`tr[data-id="${id}"] [data-act="del"]`);
+  if(pendingDel===id){
+    pendingDel=null; reallyDelete(id);
+  }else{
+    pendingDel=id;
+    if(btn){btn.outerHTML='<button class="confirm-del" data-act="del">确认删除？</button>'}
+    setTimeout(()=>{pendingDel=null;renderMain()},2600);
+  }
+}
+
+/* ================= 事件 ================= */
+$('#catNav').addEventListener('click',e=>{
+  const b=e.target.closest('.cat-item'); if(!b)return;
+  // 切页签前先把待提交的排序送出去 —— 否则在 A 标签拖完立刻切到 B，
+  // 那 400ms 的防抖窗口会被切页打断（flushOrder 仍会跑，但顺序语义要稳）。
+  flushOrder();
+  activeCat=b.dataset.cat;
+  localStorage.setItem('invest_tab',activeCat);
+  renderNav(); renderMain();
+});
+// 标签栏与资产类型栏走同一条点击逻辑（两者是同级页签）
+$('#tagNav').addEventListener('click',e=>{
+  const b=e.target.closest('.cat-item'); if(!b)return;
+  // 刚拖完的那一下不要当成点击（否则拖完会顺带切过去）
+  if(tagDragMoved){tagDragMoved=false;return}
+  flushOrder();
+  activeCat=b.dataset.cat;
+  localStorage.setItem('invest_tab',activeCat);
+  renderNav(); renderMain();
+});
+
+/* ===== 拖动标签页签，调整标签自身顺序 =====
+   与「标签内资产排序」是两件不同的事：
+     - 这里改的是**标签之间的顺序** → PUT /watchlist/tags/order（ids = 全部自定义标签）
+     - 标签内资产顺序 → PUT /watchlist/tags/:id/order
+   内置「标星」不在这一行里（它在上面一行），服务端也拒绝把它放进 ids。 */
+let tagDragId=null, tagDragMoved=false;
+$('#tagNav').addEventListener('dragstart',e=>{
+  const b=e.target.closest('.cat-item[data-cat^="tag:"]');
+  if(!b)return;
+  tagDragId=b.dataset.cat.slice(4);
+  tagDragMoved=false;
+  b.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  try{e.dataTransfer.setData('text/plain',tagDragId)}catch(_){}
+});
+$('#tagNav').addEventListener('dragend',()=>{
+  $('#tagNav').querySelectorAll('.dragging,.drop-mark').forEach(t=>t.classList.remove('dragging','drop-mark','mark-left','mark-right'));
+  tagDragId=null;
+  // 让随后的 click 事件被忽略掉（拖完不该切换页签）
+  if(tagDragMoved)setTimeout(()=>{tagDragMoved=false},0);
+});
+$('#tagNav').addEventListener('dragover',e=>{
+  if(!tagDragId)return;
+  $('#tagNav').querySelectorAll('.drop-mark').forEach(t=>t.classList.remove('drop-mark','mark-left','mark-right'));
+  const b=e.target.closest('.cat-item[data-cat^="tag:"]');
+  if(!b||b.dataset.cat.slice(4)===tagDragId)return;
+  e.preventDefault();
+  const r=b.getBoundingClientRect();
+  b.classList.add('drop-mark',(e.clientX-r.left)>r.width/2?'mark-right':'mark-left');
+});
+$('#tagNav').addEventListener('drop',e=>{
+  if(!tagDragId)return;
+  const b=e.target.closest('.cat-item[data-cat^="tag:"]');
+  if(!b)return;
+  const targetId=b.dataset.cat.slice(4);
+  if(targetId===tagDragId)return;
+  e.preventDefault();
+  const r=b.getBoundingClientRect();
+  dropReorderTag(tagDragId,targetId,(e.clientX-r.left)>r.width/2);
+});
+function dropReorderTag(dragTid,targetTid,after){
+  const userTags=tags.filter(t=>!t.is_star);
+  const ids=userTags.map(t=>t.id);
+  const from=ids.indexOf(dragTid);
+  if(from<0)return;
+  ids.splice(from,1);
+  const ti=ids.indexOf(targetTid);
+  if(ti<0)return;
+  ids.splice(after?ti+1:ti,0,dragTid);
+  tagDragMoved=true;
+  // 本地立即生效：把 sort_order 按新顺序写回（renderTagNav 就是按它排的），
+  // 这样页签当场就动，不用等下一次 loadAssets。
+  ids.forEach((id,i)=>{const t=tags.find(x=>x.id===id);if(t)t.sort_order=i+1});
+  renderTagNav();
+  persistTagOrder(ids);
+}
+let pendingTagOrder=null, tagOrderTimer=null;
+function persistTagOrder(ids){
+  pendingTagOrder=ids;
+  if(tagOrderTimer)clearTimeout(tagOrderTimer);
+  // 与资产排序同样用防抖 + 页面隐藏时 flush（见 persistOrder 的说明）
+  tagOrderTimer=setTimeout(flushTagOrder,400);
+}
+async function flushTagOrder(){
+  if(tagOrderTimer){clearTimeout(tagOrderTimer);tagOrderTimer=null}
+  const ids=pendingTagOrder; if(!ids)return;
+  pendingTagOrder=null;
+  // 发请求前用**当前**标签清单校正一次 ids：
+  // 防抖窗口里用户可能刚建/刚删了标签，拿快照里的旧 ids 去提交会被服务端
+  // 以「必须与现有自定义标签完全一致」拒掉（400）—— 拖完马上删标签就是这条路径。
+  const live=tags.filter(t=>!t.is_star).map(t=>t.id);
+  const liveSet=new Set(live);
+  const ordered=ids.filter(id=>liveSet.has(id));
+  for(const id of live) if(!ordered.includes(id)) ordered.push(id);
+  if(!ordered.length)return;
+  if(ordered.length!==live.length){renderTagNav();return}
+  try{
+    const d=await api('/api/v1/watchlist/tags/order',
+      {method:'PUT',body:{ids:ordered,expected_version:version}});
+    version=d.version;
+    // 服务端已确认：把本地 sort_order 对齐，避免下次渲染又跳回去
+    ordered.forEach((id,i)=>{const t=tagById(id);if(t)t.sort_order=i+1});
+  }catch(e){
+    if(e&&e.code==='VERSION_CONFLICT'){errToast(e);return}
+    // 400 多半是并发下标签集合变了，静默重载即可，不用吓用户
+    if(e&&e.status===400){try{await loadAssets();renderAll()}catch(_){};return}
+    errToast(Object.assign({},e,{message:'标签顺序未保存：'+(e.message||'')}));
+    try{await loadAssets();renderAll()}catch(_){}
+  }
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flushTagOrder()});
+window.addEventListener('pagehide',()=>{flushTagOrder()});
+$('#main').addEventListener('click',e=>{
+  if(isMobile){
+    const row=e.target.closest('.mrow[data-id]');
+    if(row)openSheet(row.dataset.id);
+    return;
+  }
+  const act=e.target.closest('[data-act]');
+  const tr=e.target.closest('tr[data-id]');
+  if(!tr)return;
+  const id=tr.dataset.id;
+  // 点操作按钮：只执行该动作，不打开详情（否则删/改会被面板遮住）
+  if(act){
+    const a=act.dataset.act;
+    if(a==='star')toggleStar(id);
+    else if(a==='edit')openEdit(id);
+    else if(a==='del')requestDelete(id);
+    return;
+  }
+  // 点行的非操作区：开关右侧详情
+  if(id===detailId)closeDetail(); else openDetail(id);
+});
+
+// 移动端 sheet 内的周期切换
+$('#sheetChart').addEventListener('click',e=>{
+  const b=e.target.closest('.ivbtn'); if(!b)return;
+  if(b.dataset.iv===detailIv)return;
+  detailIv=b.dataset.iv;
+  renderSheet();
+  loadDetailChart(sheetId,detailIv);
+});
+/* ===== 拖拽排序 =====
+   两种页面，两套落库目标：
+     - 标签页（标星 / 自定义标签）：跨市场，走 PUT /watchlist/tags/:id/order
+     - 分类页（美股/A股/…）：单市场，走 PUT /watchlist/categories/:cat/order
+   之前标星页的 bug 就是这里：页签是跨市场的，却调用 per-category 接口，
+   而那个接口要求 ids 恰好是该分类全集 → 必然 400。 */
+let dragId=null;
+/** 当前页签对应的「拖拽作用域」：标签页返回 {kind:'tag',tagId}，分类页返回 {kind:'cat',cat} */
+function dragScope(){
+  if(activeCat==='star')return {kind:'tag',tagId:STAR};
+  const t=activeTagId();
+  if(t)return {kind:'tag',tagId:t};
+  return {kind:'cat',cat:activeCat};
+}
+/** 当前作用域下的资产 id 序列（拖拽时用它重排并作为提交的 ids） */
+function scopeIds(){
+  const s=dragScope();
+  return s.kind==='tag' ? assetsInTag(s.tagId).map(a=>a.id)
+                        : assets.filter(a=>a.category===s.cat).map(a=>a.id);
+}
+$('#main').addEventListener('dragstart',e=>{
+  if(isMobile)return;
+  const tr=e.target.closest('tr[data-id]'); if(!tr||!tr.draggable)return;
+  dragId=tr.dataset.id;
+  tr.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  try{e.dataTransfer.setData('text/plain',dragId)}catch(_){}
+});
+$('#main').addEventListener('dragend',()=>{
+  document.querySelectorAll('tr.dragging,tr.drop-mark').forEach(t=>t.classList.remove('dragging','drop-mark','mark-above','mark-below'));
+  dragId=null;
+});
+$('#main').addEventListener('dragover',e=>{
+  if(!dragId||isMobile)return;
+  document.querySelectorAll('tr.drop-mark').forEach(t=>t.classList.remove('drop-mark','mark-above','mark-below'));
+  const tr=e.target.closest('tr[data-id]');
+  if(!tr||tr.dataset.id===dragId)return;
+  e.preventDefault();
+  const r=tr.getBoundingClientRect();
+  tr.classList.add('drop-mark',(e.clientY-r.top)>r.height/2?'mark-below':'mark-above');
+});
+$('#main').addEventListener('drop',e=>{
+  if(!dragId||isMobile)return;
+  const tr=e.target.closest('tr[data-id]');
+  if(tr&&tr.dataset.id!==dragId){
+    e.preventDefault();
+    const r=tr.getBoundingClientRect();
+    dropReorder(dragId,tr.dataset.id,(e.clientY-r.top)>r.height/2);
+  }
+});
+$('#sheetClose').onclick=closeSheet;
+$('#sheetOverlay').onclick=closeSheet;
+$('#sheetActs').addEventListener('click',e=>{
+  const b=e.target.closest('[data-sact]'); if(!b||!sheetId)return;
+  const act=b.dataset.sact;
+  if(act==='star')toggleStar(sheetId);
+  else if(act==='up')moveAsset(sheetId,-1);
+  else if(act==='down')moveAsset(sheetId,1);
+  else if(act==='edit'){const id=sheetId;closeSheet();openEdit(id)}
+  else if(act==='del'){
+    if(pendingDel===sheetId){
+      const id=sheetId; closeSheet(); pendingDel=null; reallyDelete(id);
+    }else{
+      pendingDel=sheetId; renderSheet();
+      setTimeout(()=>{pendingDel=null;if(sheetId)renderSheet()},2600);
+    }
+  }
+});
+$('#addBtn').onclick=()=>{
+  // 在标签页新增 → 预勾该标签；在分类页新增 → 预选该市场。标星页两者都不预选。
+  const t=activeTagId();
+  if(t)openAdd(null,t);
+  else if(activeCat==='star')openAdd(null);
+  else openAdd(activeCat);
+};
+$('#refreshBtn').onclick=()=>doRefresh(false);
+$('#netRetry').onclick=()=>boot();
+$('#inCat').onchange=()=>{$('#symHint').dataset.suggest='';syncHint()};
+
+/* ===== 代码 / 编号的模糊搜索提示 =====
+   输入关键词（支持中文名、拼音首字母、英文代码）→ 下拉候选 → 点选自动填好代码与名称。
+   实测：B1YD→比亚迪 / apple→AAPL 苹L果 / 腾讯→00700 腾讯控股。
+   搜索只是辅助：上游失败/无结果时不报错，用户仍可手输代码。 */
+const SYM_DEBOUNCE_MS = 220;
+let symTimer = null, symSeq = 0, symItems = [], symActive = -1;
+
+function closeSymDrop(){
+  symItems=[]; symActive=-1;
+  const d=$('#symDrop'); if(d){d.hidden=true; d.innerHTML='';}
+}
+
+function renderSymDrop(items){
+  const d=$('#symDrop'); if(!d)return;
+  symItems=items; symActive = items.length ? 0 : -1;
+  d.innerHTML='';
+  if(!items.length){
+    const e=document.createElement('div');
+    e.className='sym-empty';
+    e.textContent='没有匹配结果，可直接输入代码后保存';
+    d.appendChild(e); d.hidden=false; return;
+  }
+  items.forEach((it,i)=>{
+    const row=document.createElement('div');
+    row.className='sym-item'+(i===0?' active':'');
+    row.dataset.idx=String(i);
+    // 全部用 textContent：搜索结果来自第三方，绝不拼 innerHTML
+    const main=document.createElement('div'); main.className='si-main';
+    const nm=document.createElement('div'); nm.className='si-name'; nm.textContent=it.name||it.symbol;
+    const cd=document.createElement('div'); cd.className='si-code'; cd.textContent=it.input_symbol||it.symbol;
+    main.appendChild(nm); main.appendChild(cd);
+    const mk=document.createElement('span'); mk.className='si-mkt';
+    mk.textContent=(CAT_MAP[it.category]?CAT_MAP[it.category].label:'')+(it.exchange?' · '+it.exchange:'');
+    row.appendChild(main); row.appendChild(mk);
+    d.appendChild(row);
+  });
+  d.hidden=false;
+}
+
+function highlightSym(i){
+  const d=$('#symDrop'); if(!d)return;
+  for(const el of d.querySelectorAll('.sym-item')){
+    el.classList.toggle('active', Number(el.dataset.idx)===i);
+  }
+  symActive=i;
+}
+
+// 选中一项：回填代码 + 名称，并按结果的市场自动切分类
+function pickSym(i){
+  const it=symItems[i]; if(!it)return;
+  $('#inCat').value=it.category;
+  $('#inSym').value=it.input_symbol||it.symbol;
+  // 名称直接覆盖：用户选了另一个标的，旧名称留着会和代码对不上。
+  // 若他手动改过名称，下次点选会被覆盖 —— 这是可接受的，因为「选中标的后名称跟着走」
+  // 比「保留一个已经不匹配的旧名称」更少出错。
+  $('#inName').value=it.name||'';
+  $('#symHint').dataset.suggest=it.name||'';
+  closeSymDrop();
+  syncHint();
+}
+
+async function runSymSearch(q){
+  const seq=++symSeq;
+  try{
+    const d=await api('/api/v1/watchlist/search?q='+encodeURIComponent(q));
+    if(seq!==symSeq)return;                 // 已有更新的输入，丢弃这次结果
+    renderSymDrop(d.results||[]);
+  }catch(e){
+    if(seq!==symSeq)return;
+    if(e&&e.code==='UNAUTHORIZED')return;
+    closeSymDrop();                          // 搜索失败静默降级，不打扰输入
+  }
+}
+
+function scheduleSymSearch(){
+  const q=$('#inSym').value.trim();
+  clearTimeout(symTimer);
+  if(q.length<1){closeSymDrop();return}
+  symTimer=setTimeout(()=>runSymSearch(q),SYM_DEBOUNCE_MS);
+}
+
+$('#inSym').addEventListener('input',()=>{
+  $('#symHint').dataset.suggest='';          // 手输改变了内容，旧的「识别：」失效
+  syncHint();
+  scheduleSymSearch();
+});
+$('#inSym').addEventListener('focus',()=>{ if($('#inSym').value.trim())scheduleSymSearch() });
+$('#inSym').addEventListener('keydown',e=>{
+  const d=$('#symDrop');
+  if(!d||d.hidden)return;
+  if(e.key==='ArrowDown'){e.preventDefault();highlightSym(Math.min(symItems.length-1,symActive+1))}
+  else if(e.key==='ArrowUp'){e.preventDefault();highlightSym(Math.max(0,symActive-1))}
+  else if(e.key==='Enter'){
+    if(symActive>=0){e.preventDefault();pickSym(symActive)}
+  }
+  else if(e.key==='Escape'){closeSymDrop()}
+});
+$('#symDrop').addEventListener('click',e=>{
+  const row=e.target.closest('.sym-item'); if(!row)return;
+  pickSym(Number(row.dataset.idx));
+});
+// 点空白处收起
+document.addEventListener('click',e=>{
+  if(e.target.closest('.sym-wrap'))return;
+  closeSymDrop();
+});
+
+$('#modalClose').onclick=closeModal; $('#modalCancel').onclick=closeModal;
+$('#modalSave').onclick=saveModal;
+$('#overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+/* 新增时：代码输入完尝试识别，成功则在提示里显示名称并预填空名称 */
+$('#inSym').addEventListener('input',()=>{$('#fSym').classList.remove('error');$('#symHint').dataset.suggest=''});
+$('#inSym').addEventListener('blur',()=>{
+  if(editingId)return;
+  const cat=$('#inCat').value, sym=$('#inSym').value.trim().toUpperCase();
+  if(!sym||validateSym(cat,sym))return;
+  api('/api/v1/watchlist/lookup',{method:'POST',body:{category:cat,symbol:sym}}).then(d=>{
+    if(editingId)return;
+    $('#symHint').dataset.suggest=d.name||'';
+    if(d.name&&!$('#inName').value.trim())$('#inName').value=d.name;
+    syncHint();
+  }).catch(()=>{});
+});
+/* 登录闸门 */
+$('#authSubmit').onclick=submitAuth;
+$('#authUserInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('#authPassInput').focus()});
+$('#authPassInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeSheet();closePfDetail()}});
+
+/* ================= 资产视图（持仓与估值） =================
+   数据全部来自 /api/v1/portfolio/*，与自选报价缓存完全隔离：
+   持仓不会自动进自选，自选也不会被当成持仓。
+   金额在服务端就按 USD 折算好，这里只做展示与 USD→CNY 的显示换算。 */
+let pfConfig=null;        // 服务端配置快照（含 version）
+let pfVal=null;           // 估值结果
+let pfGroup='type';       // 'type' | 'channel'
+let pfLoading=false;
+let pfForceCurrency=null; // 用户手动切过币种后，以本地选择为准（避免被服务端偏好覆盖）
+
+const PF_CAT_LABEL={us:'美股',hk:'港股',a_share:'A股',crypto:'加密货币',index:'指数与宏观'};
+// 图表/色块的调色板：按「相邻差异最大」排序，而不是按色相渐变排。
+// 用户反馈「币安和富途颜色很接近」——根因不是调色板太小，而是下面 pfColor 的
+// 哈希取模会让两个不同实体撞到同一个颜色（实测币安与富途US 都拿到 #8a4fbf）。
+// 所以现在改成「按序列位置分配」+ 更大的色距：
+//   蓝 → 橙 → 墨绿 → 紫 → 棕红 → 青 → 洋红 → 土黄 → 深蓝灰 → 橄榄
+// 两两之间在明度或色相上都拉开，缩成 10px 色块也能分清。
+const PF_PALETTE=[
+  '#1d4ed8', // 蓝
+  '#ea580c', // 橙
+  '#047857', // 墨绿
+  '#7e22ce', // 紫
+  '#b91c1c', // 棕红
+  '#0e7490', // 青
+  '#be185d', // 洋红
+  '#a16207', // 土黄
+  '#334155', // 深蓝灰
+  '#4d7c0f', // 橄榄
+];
+// 旧数据里的颜色是 MyInfo 时代的 CSS 变量名（--tiger / --up / --stock / --crypto …），
+// 它们在本页并不存在。映射成固定色，保证「同一实体永远同一色」且互不相同。
+const PF_LEGACY_COLOR={
+  '--tiger':'#1d4ed8', '--binance':'#ea580c', '--futu':'#7e22ce',
+  '--imtoken':'#0e7490', '--up':'#047857', '--down':'#b91c1c',
+  '--stock':'#7e22ce', '--crypto':'#ea580c',
+};
+// 颜色解析：十六进制直接用；旧变量名查映射表；其余按**实体 id** 稳定取色。
+//
+// ⚠️ 不能用「列表位置」取色。同一个实体在不同视图里的位置不同
+// （饼图按金额降序、配置弹窗按配置顺序），按位置取色会让「币安」在饼图里是橙、
+// 在弹窗里变成别的色 —— 实测就是这样不一致的。
+// 改为对 id 做一次分布良好的散列，并在一组内做冲突消解（见 pfColorMap）。
+function pfHash(str){
+  let h=2166136261>>>0;                      // FNV-1a：比 h*31 分布均匀，减少相邻串撞桶
+  for(const ch of String(str??'')){
+    h ^= ch.codePointAt(0);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+}
+function pfColor(raw,seed,idx){
+  const v=String(raw??'').trim();
+  if(/^#[0-9a-f]{3,8}$/i.test(v))return v;
+  const mapped=PF_LEGACY_COLOR[v];
+  if(mapped)return mapped;
+  if(/^var\(--/.test(v))return v;              // 仍支持显式写 var(--x) 的现代数据
+  // 没有可用色值：按 seed（实体 id）稳定取色。idx 仅作兜底，不参与主路径。
+  const key=String(seed??'')||String(idx??'');
+  return PF_PALETTE[pfHash(key)%PF_PALETTE.length];
+}
+// 给一组实体分配互不相同的颜色：以 id 散列为起点，撞了就往后挪。
+// 这样「同一实体永远同色」（因为只依赖 id），且「同屏不重复」。
+function pfColorMap(entities){
+  const used=new Set(), out=new Map();
+  for(const e of entities){
+    const v=String(e.color??'').trim();
+    let c;
+    if(/^#[0-9a-f]{3,8}$/i.test(v)) c=v;
+    else if(PF_LEGACY_COLOR[v]) c=PF_LEGACY_COLOR[v];
+    else if(/^var\(--/.test(v)) c=v;
+    else{
+      let n=pfHash(e.id)%PF_PALETTE.length;
+      for(let k=0;k<PF_PALETTE.length&&used.has(PF_PALETTE[n]);k++) n=(n+1)%PF_PALETTE.length;
+      c=PF_PALETTE[n];
+    }
+    used.add(c);
+    out.set(e.id,c);
+  }
+  return out;
+}
+function pfEsc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function pfCur(){ return pfForceCurrency || pfVal?.display_currency || pfConfig?.display_currency || 'USD'; }
+function pfRate(){ return pfVal?.usd_cny_rate ?? pfConfig?.usd_cny_rate ?? null; }
+
+// 金额：USD 模式直接显示；CNY 模式乘汇率。汇率缺失时如实说明，不用 1:1 冒充。
+function pfMoney(usd){
+  if(usd==null||!Number.isFinite(usd))return '—';
+  const cur=pfCur();
+  if(cur==='CNY'){
+    const r=pfRate();
+    if(!Number.isFinite(r)||r<=0)return '—';
+    return '¥ '+fmtNum(usd*r,2);
+  }
+  return '$ '+fmtNum(usd,2);
+}
+function fmtNum(n,d=2){
+  if(n==null||!Number.isFinite(n))return '—';
+  return n.toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
+}
+function fmtQty(n){
+  if(n==null||!Number.isFinite(n))return '—';
+  // 归一：去掉多余尾零，最多 4 位小数
+  return Number(n.toFixed(4)).toLocaleString('zh-CN',{maximumFractionDigits:4});
+}
+function pfPct(v){
+  if(v==null||!Number.isFinite(v))return '—';
+  return (v>0?'+':'')+v.toFixed(2)+'%';
+}
+function pfPctCls(v){ return v==null||!Number.isFinite(v)?'':(v>0?'up':v<0?'down':'flat'); }
+
+const PF_REASON={missing_quote:'暂无行情',missing_fx:'暂无汇率'};
+function pfReason(r){ return PF_REASON[r]||(r?'暂不可估值':null); }
+
+/* ── 加载 ── */
+async function loadPortfolio({force=false}={}){
+  if(pfLoading)return;
+  pfLoading=true;
+  try{
+    const d=await api(`/api/v1/portfolio/valuation${force?'?force=1':''}`);
+    pfVal=d;
+    // 估值响应已经包含页面展示所需数据；配置只在打开设置或修改偏好时读取。
+    // 不让首次打开资产页为一个当前不可见的弹窗多等一次请求。
+    if(pfForceCurrency===null)pfForceCurrency=d.display_currency||'USD';
+    renderAssetView();
+  }catch(e){
+    if(e.code==='UNAUTHORIZED')return;
+    pfVal=null;
+    renderAssetView(e);
+  }finally{
+    pfLoading=false;
+  }
+}
+
+async function loadPortfolioConfig(){
+  try{
+    pfConfig=await api('/api/v1/portfolio/config');
+    return pfConfig;
+  }catch(e){ throw e; }
+}
+
+/* ── 渲染：总览 + 分组 + 明细 ── */
+function renderAssetView(err){
+  if(!pfVal){
+    $('#pfTotal').textContent='—';
+    $('#pfTotalSub').textContent=err?(err.message||'估值不可用'):'加载中…';
+    $('#pfByType').innerHTML=''; $('#pfByChannel').innerHTML='';
+    $('#pfTable').innerHTML=`<div class="astate"><h3>资产数据暂时不可用</h3>
+      <p>${pfEsc(err?.message||'无法连接服务')}</p>
+      <div class="acts"><button class="btn" id="pfRetry">重试</button></div></div>`;
+    $('#pfRetry')?.addEventListener('click',()=>loadPortfolio({force:true}));
+    return;
+  }
+
+  // 币种选择器
+  for(const b of document.querySelectorAll('.curseg button')){
+    const on=b.dataset.cur===pfCur();
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-selected',on?'true':'false');
+  }
+
+  // 总览
+  const totalUsd=pfVal.total;
+  $('#pfTotal').textContent=pfMoney(totalUsd);
+  const chg=pfVal.chg_pct;
+  const parts=[];
+  if(chg==null){
+    // 没有任何可参与加权的仓位 → 显示「—」，绝不显示 0.00%
+    parts.push('<span class="flat">—</span> 组合当日加权涨跌（无可参与计算的持仓）');
+  }else{
+    parts.push(`<span class="num ${pfPctCls(chg)}">${pfPct(chg)}</span> 组合当日加权涨跌`);
+  }
+  $('#pfTotalSub').innerHTML=parts.join(' · ');
+
+  renderPfGroups();
+  renderPfTable();
+
+  // 数据状态提示：未估值 / 汇率缺失 / 部分报价失败
+  const banners=[];
+  if(pfVal.unpriced_count>0){
+    const miss=pfVal.missing_fx_currencies||[];
+    banners.push(`<div class="abanner warn"><span>总资产为<b>已估值部分</b>：${pfVal.unpriced_count} 笔持仓暂不可估值`
+      +(miss.length?`（缺少 ${miss.map(pfEsc).join('、')} 汇率）`:'')
+      +`。</span></div>`);
+  }
+  if(pfVal.price_source==='partial'){
+    banners.push('<div class="abanner warn"><span>部分持仓行情获取失败，已保留上次成功的价格。</span></div>');
+  }else if(pfVal.price_source==='empty'&&pfVal.position_count>0){
+    banners.push('<div class="abanner err"><span>还没有拉取到任何持仓行情，请点击刷新。</span></div>');
+  }
+  if(pfVal.fx?.error&&(pfVal.missing_fx_currencies||[]).length===0){
+    banners.push(`<div class="abanner warn"><span>${pfEsc(pfVal.fx.error)}</span></div>`);
+  }
+  $('#pfBanner').innerHTML=banners.join('');
+
+  // 服务端在缓存过期时会先给旧快照、后台再补拉（stale-while-revalidate）。
+  // 这里如实标出来，让用户知道看到的是旧值、正在更新 —— 而不是以为已经最新。
+  const upd=$('#pfUpdated');
+  if(pfVal.stale){
+    upd.textContent='更新中…';
+    upd.classList.add('stale');
+  }else{
+    upd.textContent=pfVal.prices_updated_at?`行情更新 ${relTime(pfVal.prices_updated_at)}`:'';
+    upd.classList.remove('stale');
+  }
+  // 后台刷新完成后自动补一次，把「更新中」换成真实时间
+  if(pfVal.stale){
+    clearTimeout(window.__pfStaleTimer);
+    window.__pfStaleTimer=setTimeout(()=>{ loadPortfolio(); }, 2500);
+  }
+}
+
+// 顶部两块（按类型 / 按渠道）：环形图 + 图例
+function typeData_(){ return (pfVal?.by_type||[]).map(g=>({id:g.id,color:g.color})) }
+function chanData_(){ return (pfVal?.by_channel||[]).map(g=>({id:g.id,color:g.color})) }
+function renderPfGroups(){
+  // 颜色按实体 id 分配并在同屏内去重（pfColorMap），因此：
+  //   · 同一渠道/类型在任何视图里都是同一个颜色；
+  //   · 同一屏内不会出现两个相同颜色（这是用户最初报的「币安和富途颜色很接近」的根因）。
+  const typeColors=pfColorMap(typeData_());
+  const chanColors=pfColorMap(chanData_());
+  const typeData=pfVal.by_type.map(g=>({id:g.id,name:g.name,color:typeColors.get(g.id),value:g.value,share:g.share,unpriced:g.unpriced_count}));
+  const chanData=pfVal.by_channel.map(g=>({id:g.id,name:g.name,color:chanColors.get(g.id),value:g.value,share:g.share,unpriced:g.unpriced_count}));
+  $('#pfByType').innerHTML=pfBlockHtml('资产类型',typeData,pfVal.total,pfVal.chg_pct,'资产类型');
+  $('#pfByChannel').innerHTML=pfBlockHtml('渠道',chanData,pfVal.total,null,'渠道');
+}
+
+function pfBlockHtml(title,groups,totalUsd,centerChg,byWhat){
+  if(!groups.length){
+    return `<div class="chart-h"><b>${title}</b></div>
+      <div class="sub" style="font-size:12.5px;color:var(--ink3)">暂无持仓</div>`;
+  }
+  const total=groups.reduce((s,g)=>s+g.value,0);
+  return `<div class="chart-h"><b>${title}</b>
+      <div class="sub">按${byWhat||'资产类型'}汇总${centerChg!=null?' · 中心为当日加权涨跌':''}</div>
+    </div>
+    <div class="chart-main">
+      ${pfDonut(groups,total,centerChg)}
+      <div class="leg">${groups.map(g=>`
+        <div class="leg-row">
+          <span class="swatch" style="background:${g.color}"></span>
+          <span class="leg-name">${pfEsc(g.name)}${g.unpriced?`<span class="grp-tag"> · ${g.unpriced} 笔未估值</span>`:''}</span>
+          <span class="leg-pct">${(g.share*100).toFixed(1)}%</span>
+          <span class="leg-val">${pfMoney(g.value)}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// 自绘 SVG 环形图（不引外部图表库；项目一贯无构建、无 CDN 依赖）
+// 环形图：viewBox 固定 160×160，实际尺寸由 CSS（.donut）控制，等比缩放。
+// 环更粗 + 段与段之间留一道底色缝，让相邻色块在缩小时也能分清
+// （用户要求「颜色差异再大一些」——除了换调色板，缝隙也很关键）。
+function pfDonut(groups,total,centerChg){
+  const R=58,SW=26,C=2*Math.PI*R;
+  const CX=80,CY=80;
+  const GAP=C*0.012;                       // 每段收一点，形成分隔缝
+  let acc=0;
+  const segs=groups.filter(g=>g.value>0).map(g=>{
+    const frac=total>0?g.value/total:0;
+    const len=Math.max(0,frac*C-GAP);
+    const el=`<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${g.color}" stroke-width="${SW}"
+      stroke-dasharray="${len.toFixed(3)} ${(C-len).toFixed(3)}"
+      stroke-dashoffset="${(-(acc*C+GAP/2)).toFixed(3)}"
+      transform="rotate(-90 ${CX} ${CY})"></circle>`;
+    acc+=frac;
+    return el;
+  }).join('');
+  const center=centerChg!=null
+    ? `<text x="${CX}" y="${CY-4}" text-anchor="middle" font-size="21" font-weight="700"
+         fill="${centerChg>0?'var(--up)':centerChg<0?'var(--down)':'var(--ink2)'}">${pfPct(centerChg)}</text>
+       <text x="${CX}" y="${CY+15}" text-anchor="middle" font-size="11" fill="var(--ink3)">当日加权</text>`
+    : `<text x="${CX}" y="${CY+4}" text-anchor="middle" font-size="13" fill="var(--ink3)">构成</text>`;
+  return `<svg class="donut" viewBox="0 0 160 160" role="img" aria-label="构成环形图">
+    <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--donut-track)" stroke-width="${SW}"></circle>
+    ${segs}${center}</svg>`;
+}
+
+// 明细列表：按类型时跨渠道合并同一标的；按渠道时不跨渠道混算
+function renderPfTable(){
+  if(!pfVal){return}
+  for(const b of document.querySelectorAll('.ov-typeswitch button')){
+    const on=b.dataset.group===pfGroup;
+    b.classList.toggle('on',on); b.setAttribute('aria-selected',on?'true':'false');
+  }
+  if(!pfVal.position_count){
+    $('#pfTable').innerHTML=`<div class="astate"><h3>还没有持仓</h3>
+      <p>持仓需要手动配置：渠道 + 资产类型 + 行情分类 + 代码 + 数量。</p>
+      <p>持仓不会自动加入自选，自选也不会被当成持仓。</p>
+      <div class="acts"><button class="btn primary" id="pfEmptyCfg">打开持仓配置</button></div></div>`;
+    $('#pfEmptyCfg')?.addEventListener('click',openConfig);
+    return;
+  }
+  const rows=pfGroup==='type'?pfRowsByType():pfRowsByChannel();
+  $('#pfTable').innerHTML=rows.length?rows.join(''):`<div class="astate"><h3>暂无数据</h3></div>`;
+  markPfSelectedRow();      // 列表重建后恢复选中态
+}
+
+function pfRowHtml(p,{qty,label,sub,share,value,unpricedReason,rowId,labelIdx}){
+  const cur=p.price_currency;
+  const unit=p.price==null?'—':`${fmtNum(p.price,p.price>=1000||p.price<1?2:p.price<1?5:2)}${cur?' '+pfEsc(cur):''}`;
+  const sel=pfDetailKey===`${p.quote_category}|${p.normalized_symbol}`?' sel':'';
+  return `<div class="arow${p.valued?'':' unvalued'}${sel}"
+    data-pf-cat="${pfEsc(p.quote_category)}" data-pf-sym="${pfEsc(p.normalized_symbol)}"
+    data-pf-row="${pfEsc(rowId||'')}"
+    role="button" tabindex="0">
+    <div class="namecell"><div class="nm">
+      <div class="aname">${pfEsc(p.symbol)}</div>
+      <div class="acode"><span>${pfEsc(sub)}</span></div>
+      ${p.valued?'':`<span class="uv-reason">${pfEsc(unpricedReason||'暂不可估值')}</span>`}
+    </div></div>
+    <div class="acell num qty">${fmtQty(qty)}</div>
+    <div class="acell num unit-price">${unit}<span class="sub">单价</span></div>
+    <div class="acell num daily ${pfPctCls(p.chg_pct)}">${pfPct(p.chg_pct)}<span class="sub">当日</span></div>
+    <div class="acell num value">${value==null?'<span class="uv-reason" style="display:inline">暂不可估值</span>':pfMoney(value)}<span class="sub">市值</span></div>
+    <div class="acell share"><span class="a-share">${share==null?'—':(share*100).toFixed(1)+'%'}
+      <span class="sharebar"><i style="width:${share==null?0:Math.min(100,share*100).toFixed(1)}%;background:${pfColor(label.color,label.id,labelIdx)}"></i></span></span>
+      <span class="sub">占比</span></div>
+  </div>`;
+}
+
+function pfRowsByType(){
+  const out=[];
+  const tcol=pfColorMap(typeData_());
+  for(const [gi,g] of pfVal.by_type.entries()){
+    const color=tcol.get(g.id);
+    out.push(`<div class="grp"><div class="grp-in">
+      <span class="swatch" style="background:${color}"></span>
+      <span class="grp-name">${pfEsc(g.name)}</span>
+      ${g.unpriced_count?`<span class="grp-tag">${g.unpriced_count} 笔未估值</span>`:''}
+      <span class="grp-spacer"></span>
+      <span class="grp-val num">${pfMoney(g.value)}</span>
+      <span class="grp-share">${(g.share*100).toFixed(1)}%
+        <span class="sharebar"><i style="width:${Math.min(100,g.share*100).toFixed(1)}%;background:${color}"></i></span></span>
+    </div></div>`);
+    // 已估值行（跨渠道已合并）
+    for(const it of g.items){
+      const chNames=(it.channel_names||[]).join(' + ')||'';
+      // 合并行本身的字段（数量/市值）来自 it，但单价与币种要回到原始持仓行去取。
+      // ⚠️ 这里必须带上 normalized_symbol / quote_category —— 详情面板靠它们定位标的，
+      // 早先漏掉 normalized_symbol 导致按类型分组时点行打不开面板。
+      const src=pfVal.positions.find(p=>p.normalized_symbol===it.normalized_symbol
+        && p.quote_category===it.quote_category);
+      out.push(pfRowHtml(
+        Object.assign({}, src, {
+          symbol:it.symbol, quote_category:it.quote_category,
+          normalized_symbol:it.normalized_symbol,
+          price:src?src.price:null, price_currency:src?src.price_currency:null,
+          chg_pct:it.chg_pct, valued:true,
+        }),
+        {qty:it.quantity,label:g,
+         sub:chNames?`${chNames} · ${it.symbol}`:`${it.normalized_symbol}`,
+         share:pfVal.total>0?it.value/pfVal.total:0,value:it.value,labelIdx:gi,
+         rowId:`${it.quote_category}|${it.normalized_symbol}`}));
+    }
+    // 未估值行：按类型分组时也要列出，保留数量/代码/原因
+    for(const p of pfVal.positions.filter(x=>x.asset_type_id===g.id&&!x.valued)){
+      out.push(pfRowHtml(p,{qty:p.quantity,label:g,sub:p.channel_name,share:null,value:null,
+        unpricedReason:pfReason(p.unpriced_reason),rowId:p.id,labelIdx:gi}));
+    }
+  }
+  return out;
+}
+
+function pfRowsByChannel(){
+  const out=[];
+  const ccol=pfColorMap(chanData_());
+  for(const [ci,g] of pfVal.by_channel.entries()){
+    const color=ccol.get(g.id);
+    out.push(`<div class="grp"><div class="grp-in">
+      <span class="swatch" style="background:${color}"></span>
+      <span class="grp-name">${pfEsc(g.name)}</span>
+      ${g.unpriced_count?`<span class="grp-tag">${g.unpriced_count} 笔未估值</span>`:''}
+      <span class="grp-spacer"></span>
+      <span class="grp-val num">${pfMoney(g.value)}</span>
+      <span class="grp-share">${(g.share*100).toFixed(1)}%
+        <span class="sharebar"><i style="width:${Math.min(100,g.share*100).toFixed(1)}%;background:${color}"></i></span></span>
+    </div></div>`);
+    // 按渠道视图：**不跨渠道合并**，同一标的在两个渠道各占一行
+    for(const p of pfVal.positions.filter(x=>x.channel_id===g.id)){
+      // 名称本身就是代码，副标题若再写一遍代码是纯重复；
+      // 改显示行情分类，补上刚去掉的 chip 的信息。
+      out.push(pfRowHtml(p,{qty:p.quantity,label:g,
+        sub:PF_CAT_LABEL[p.quote_category]||p.quote_category,
+        share:pfVal.total>0&&p.value!=null?p.value/pfVal.total:null,
+        value:p.value,unpricedReason:pfReason(p.unpriced_reason),
+        rowId:p.id,labelIdx:ci}));
+    }
+  }
+  return out;
+}
+
+
+/* ── 资产页：右侧详情面板 ──────────────────────────────────────────
+   与自选页的详情面板同一套视觉与信息结构（.detail / .dt-stats / K 线 / 周期切换）。
+   数据来源不同：自选读 watchlist_quotes，这里读 portfolio valuation 的行 +
+   /api/v1/portfolio/candles（owner='pf' 的独立 K 线缓存）。
+   面板打开/关闭与列表的 .has-detail 联动，周/月等列不参与——资产列表本来就没有这些列。 */
+let pfDetailKey=null;    // `${quote_category}|${normalized_symbol}`，唯一标识一个持仓标的
+let pfDetailRowId=null;  // 触发打开的具体行（按渠道视图下同一标的有多个行）
+let pfDetailIv='1d';
+let pfDetailSeq=0;       // 每次关闭自增，防止慢回来的 K 线把已关闭的面板画回来
+let pfDetailReturnFocus=null;
+
+function pfDetailId(cat,sym){return `pf:${cat}:${sym}`;}
+
+// 该标的在持仓里的全部行（同一标的多渠道会有多行）
+function pfDetailRows(cat,sym){
+  return (pfVal?.positions||[]).filter(p=>p.quote_category===cat&&p.normalized_symbol===sym);
+}
+
+// 面板骨架重建后必须重画 K 线；这里统一收口，调用方不需要各自记得。
+function schedulePfChartPaint(cat,sym){
+  Promise.resolve().then(()=>{
+    if(pfDetailKey!==`${cat}|${sym}`)return;   // 期间已切换/关闭
+    loadPfCandles(cat,sym,pfDetailIv);
+  });
+}
+
+function openPfDetail(cat,sym,rowId){
+  const key=`${cat}|${sym}`;
+  if(isMobile&&document.activeElement?.matches?.('#pfTable .arow'))pfDetailReturnFocus=document.activeElement;
+  if(pfDetailKey!==key)pfDetailIv='1d';    // 换标的重置周期，避免带着上一个的
+  pfDetailKey=key;
+  pfDetailRowId=rowId||'';                 // 记住具体是哪一行，用于「再点一次收起」
+  markPfSelectedRow();
+  renderPfDetail();
+  if(isMobile){
+    $('#pfDetailOverlay').classList.add('open');
+    document.body.classList.add('pf-sheet-open');
+    requestAnimationFrame(()=>{ $('#pfDetail')?.classList.add('open'); $('#pfDetailClose')?.focus(); });
+  }
+  loadPfCandles(cat,sym,pfDetailIv);
+}
+
+// 选中态直接改 class，不重画整个列表 —— 重画会丢掉滚动位置，
+// 而且跨渠道合并后同一标的可能对应多行（都要高亮）。
+function markPfSelectedRow(){
+  for(const r of document.querySelectorAll('#pfTable .arow[data-pf-cat]')){
+    const on=pfDetailKey===`${r.dataset.pfCat}|${r.dataset.pfSym}`;
+    r.classList.toggle('sel',on);
+  }
+}
+
+function closePfDetail(){
+  pfDetailKey=null; pfDetailRowId=null; pfDetailSeq+=1;
+  $('#pfDetailOverlay').classList.remove('open');
+  document.body.classList.remove('pf-sheet-open');
+  const el=$('#pfDetail'); if(el)el.remove();
+  $('#pfLayout')?.classList.remove('has-detail');
+  for(const r of document.querySelectorAll('#pfTable .arow.sel'))r.classList.remove('sel');
+  if(pfDetailReturnFocus?.isConnected)pfDetailReturnFocus.focus();
+  pfDetailReturnFocus=null;
+}
+
+// 面板骨架：头部（名称/代码/分类）+ 统计格 + 持仓明细 + K 线
+function ensurePfDetailShell(){
+  const rows=pfDetailRows(...pfDetailKey.split('|'));
+  if(!rows.length)return null;
+  const p=rows[0];
+  const host=$('#pfLayout'); if(!host)return null;
+  let el=$('#pfDetail');
+  if(!el){
+    el=document.createElement('aside');
+    el.id='pfDetail'; el.className='detail';
+    if(isMobile){el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label','持仓详情')}
+    host.appendChild(el);
+    host.classList.add('has-detail');
+  }
+  el.innerHTML=`
+    <div class="detail-head">
+      <div style="min-width:0">
+        <div class="dt-name"></div>
+        <div class="dt-sub"></div>
+      </div>
+      <button class="dt-x" id="pfDetailClose" title="关闭" aria-label="关闭持仓详情">×</button>
+    </div>
+    <div class="detail-body">
+      <div class="dt-stats" id="pfDStats"></div>
+      <div id="pfDPos"></div>
+      <div class="ivswitch" id="pfDIv"></div>
+      <div id="pfDChart"></div>
+      <div class="chart-note" id="pfDNote"></div>
+    </div>`;
+  // 名称用 textContent，不拼 innerHTML（行情源字符串不可信）
+  el.querySelector('.dt-name').textContent=p.symbol;
+  el.querySelector('.dt-sub').textContent=
+    `${p.normalized_symbol} · ${PF_CAT_LABEL[p.quote_category]||p.quote_category}`;
+  el.querySelector('#pfDetailClose').onclick=closePfDetail;
+  const sw=el.querySelector('#pfDIv');
+  for(const iv of ['1d','1w','1M']){
+    const b=document.createElement('button');
+    b.className='ivbtn'+(iv===pfDetailIv?' active':'');
+    b.dataset.iv=iv; b.textContent=IV_LABEL[iv];
+    sw.appendChild(b);
+  }
+  sw.addEventListener('click',e=>{
+    const b=e.target.closest('.ivbtn'); if(!b||b.dataset.iv===pfDetailIv)return;
+    pfDetailIv=b.dataset.iv;
+    renderPfDetail();
+    loadPfCandles(...pfDetailKey.split('|'),pfDetailIv);
+  });
+  return el;
+}
+
+function renderPfDetail(){
+  if(!pfDetailKey)return;
+  const [cat,sym]=pfDetailKey.split('|');
+  const rows=pfDetailRows(cat,sym);
+  if(!rows.length){closePfDetail();return}
+  const el=ensurePfDetailShell(); if(!el)return;
+  for(const b of el.querySelectorAll('.ivbtn'))b.classList.toggle('active',b.dataset.iv===pfDetailIv);
+  // ⚠️ ensurePfDetailShell() 会整体重写 innerHTML（K 线容器随之被清空），
+  // 所以这里必须补画一次图。不这样做的话，任何「只重建面板不重画图」的
+  // 路径（换分组维度、重开面板）都会留下一个空图框。
+  schedulePfChartPaint(cat,sym);
+
+  // ── 指标格：与自选页同样的字段顺序（最新价 / 日 / 周 / 月 / 总市值 / 行情时间 / 状态）──
+  const p=rows[0];
+  const pct=x=>x==null?'<span class="flat">—</span>'
+    :`<span class="${x>0?'up':x<0?'down':'flat'}">${x>0?'+':''}${x.toFixed(2)}%</span>`;
+  const priced=p.price!=null&&Number.isFinite(p.price);
+  const unit=priced
+    ? `${fmtNum(p.price,p.price>=1000||p.price<1?2:p.price<1?5:2)}<small class="price-cur"> ${pfEsc(p.price_currency||'')}</small>`
+    : '<span class="flat">—</span>';
+  const st=p.statusText||(p.valued?'正常':(pfReason(p.unpriced_reason)||'暂不可估值'));
+  const cells=[
+    ['最新价', unit],
+    ['日涨跌', pct(p.chg_pct)],
+    ['周涨跌', pct(p.week_pct)],
+    ['月涨跌', pct(p.month_pct)],
+    ['总市值', '<span class="flat">—</span>'],   // 持仓链路不取市值，如常留空而不是编一个
+    ['行情时间', `<span class="dt-meta">${pfVal.prices_updated_at?relTime(pfVal.prices_updated_at):'—'}</span>`],
+    ['状态', `<span class="dt-meta">${pfEsc(st)}</span>`],
+  ];
+  const host=el.querySelector('#pfDStats'); host.innerHTML='';
+  for(const [label,val] of cells){
+    const d=document.createElement('div'); d.className='dstat';
+    const l=document.createElement('div'); l.className='dstat-l'; l.textContent=label;
+    const v=document.createElement('div'); v.className='dstat-v'; v.innerHTML=val;
+    d.appendChild(l); d.appendChild(v); host.appendChild(d);
+  }
+  if(!p.valued&&p.unpriced_reason){
+    const err=document.createElement('div'); err.className='dt-err';
+    err.textContent=pfReason(p.unpriced_reason)+'（该笔未计入总资产）';
+    host.appendChild(err);
+  }
+
+  // ── 持仓明细：同一标的多渠道逐笔列出（按渠道视图也只显示该标的的行）──
+  const box=el.querySelector('#pfDPos');
+  box.innerHTML='';
+  const totalQty=rows.reduce((s,r)=>s+r.quantity,0);
+  const totalVal=rows.reduce((s,r)=>s+(r.valued&&r.value!=null?r.value:0),0);
+  const unpriced=rows.filter(r=>!r.valued).length;
+  const h=document.createElement('div'); h.className='dt-sub-h';
+  h.textContent=rows.length>1?`持仓 · ${rows.length} 笔`:'持仓';
+  box.appendChild(h);
+  const sum=document.createElement('div'); sum.className='dt-pos';
+  sum.innerHTML=`
+    <div class="dt-row"><span class="k">合计数量</span><span class="v">${fmtQty(totalQty)}</span></div>
+    <div class="dt-row"><span class="k">合计市值</span><span class="v">${unpriced===rows.length?'—':pfMoney(totalVal)}</span></div>`;
+  box.appendChild(sum);
+  if(unpriced)box.appendChild(Object.assign(document.createElement('div'),{
+    className:'dt-err', textContent:`${unpriced} 笔暂不可估值（缺行情或缺少汇率）`}));
+  const list=document.createElement('div');
+  for(const r of rows){
+    const d=document.createElement('div'); d.className='dt-chan';
+    const sw=document.createElement('span'); sw.className='swatch';
+    const cIdx=pfVal.by_channel.findIndex(c=>c.id===r.channel_id);
+    const cObj=cIdx>=0?pfVal.by_channel[cIdx]:{};
+    sw.style.background=pfColor(cObj.color,r.channel_id,cIdx<0?0:cIdx);
+    const nm=document.createElement('span'); nm.className='nm'; nm.textContent=r.channel_name;
+    const q=document.createElement('span'); q.className='qty'; q.textContent=fmtQty(r.quantity);
+    const v=document.createElement('span');
+    v.className='val'+(r.valued?'':' flat');
+    v.textContent=r.valued?pfMoney(r.value):'暂不可估值';
+    d.appendChild(sw); d.appendChild(nm); d.appendChild(q); d.appendChild(v);
+    list.appendChild(d);
+  }
+  box.appendChild(list);
+}
+
+/* 持仓 K 线的加载与绘制：复用自选页的 candleCache + paintChart，
+   只是 key 用合成 id，并打 owner='pf' 的接口。 */
+function loadPfCandles(cat,sym,iv){
+  const id=pfDetailId(cat,sym);
+  const k=candleKey(id,iv);
+  const cur=candleCache.get(k);
+  const need=getViewCount(id,iv);
+
+  // 每次打开都必须把图画出来 —— 不能因为缓存命中就提前 return。
+  // 面板关闭时会连同 #pfDetail 一起移除，重开是**新的空壳**；
+  // 若这里跳过绘制，就会出现「第一次有图、再点开没图」。
+  const paint=()=>{
+    if(pfDetailKey!==`${cat}|${sym}`||pfDetailIv!==iv)return;
+    const el=$('#pfDetail'); if(!el)return;
+    paintChart(el.querySelector('#pfDChart'),el.querySelector('#pfDNote'),id,iv);
+    renderPfDetailChartMeta(id,iv);
+  };
+
+  // 缓存够用：直接画，不发请求
+  if(cur&&cur.candles&&cur.candles.length>=need){paint();return Promise.resolve(cur)}
+
+  candleCache.set(k,{loading:true,candles:cur?.candles||[]});
+  paint();                                   // 先把「加载中」或旧图画上，避免空窗
+  const seqAtStart=pfDetailSeq;
+  return (async()=>{
+    try{
+      const d=await api(`/api/v1/portfolio/candles?quote_category=${encodeURIComponent(cat)}`
+        +`&normalized_symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(iv)}`
+        +`&range=${encodeURIComponent(DEFAULT_PF_RANGE[iv])}`);
+      if(pfDetailSeq!==seqAtStart||pfDetailKey!==`${cat}|${sym}`)return;  // 已关闭/已换标的
+      candleCache.set(k,{loading:false,candles:d.candles||[],source:d.source_name||'',
+        currency:d.currency||'',stale:!!d.stale,limited:!!d.limited_history,
+        note:d.note||'',updated_at:d.updated_at||null,error:null,range:DEFAULT_PF_RANGE[iv]});
+    }catch(e){
+      if(pfDetailSeq!==seqAtStart)return;
+      candleCache.set(k,{loading:false,candles:cur?.candles||[],source:'',currency:'',
+        stale:false,limited:false,note:'',updated_at:null,
+        error:(e&&e.message)||'K 线加载失败',range:DEFAULT_PF_RANGE[iv]});
+    }
+    paint();
+  })();
+}
+
+const DEFAULT_PF_RANGE={'1d':'6mo','1w':'3y','1M':'10y'};
+
+// 图表下方的来源/时间说明（与自选页 chart-note 一致）
+function renderPfDetailChartMeta(id,iv){
+  const el=$('#pfDetail'); if(!el)return;
+  const st=candleCache.get(candleKey(id,iv))||{};
+  const note=el.querySelector('#pfDNote'); if(!note)return;
+  if(st.error){note.textContent=st.error; return}
+  if(st.limited&&st.note){note.textContent=st.note; return}
+  if(st.source){note.textContent=`数据来源：${st.source}${st.currency?' · '+st.currency:''}`; return}
+  note.textContent='';
+}
+
+/* ── 配置弹窗（草稿式） ── */
+let cfgDraft=null;      // 本地草稿；null = 未打开
+let cfgBaseVersion=null;
+let cfgDirty=false;
+
+function cfgDeepCopy(o){return JSON.parse(JSON.stringify(o));}
+
+async function openConfig(){
+  try{
+    const c=await loadPortfolioConfig();
+    cfgDraft={
+      channels:cfgDeepCopy(c.channels),
+      asset_types:cfgDeepCopy(c.asset_types),
+      holdings:cfgDeepCopy(c.holdings),
+      display_currency:c.display_currency,
+      usd_cny_rate:c.usd_cny_rate,
+    };
+    cfgBaseVersion=c.version;
+    cfgDirty=false;
+    $('#cfgOverlay').classList.add('open');
+    renderCfg();
+  }catch(e){
+    toast(e.message||'无法加载配置');
+  }
+}
+function closeConfig(){ cfgDraft=null; cfgDirty=false; $('#cfgOverlay').classList.remove('open'); }
+function cfgTouch(){ cfgDirty=true; renderCfgFoot(); }
+
+function renderCfgFoot(){
+  $('#cfgDraft').hidden=!cfgDirty;
+  $('#cfgClean').hidden=cfgDirty;
+  $('#cfgVer').textContent=`本地草稿 · 基于 v ${cfgBaseVersion}`;
+  $('#cfgErr').hidden=true;
+  $('#cfgReloadWrap').hidden=true;
+}
+
+function renderCfg(){
+  if(!cfgDraft)return;
+  const d=cfgDraft;
+  $('#cfgChCnt').textContent=d.channels.length;
+  $('#cfgTyCnt').textContent=d.asset_types.length;
+  $('#cfgHCnt').textContent=d.holdings.length+' 笔';
+
+  const chCols=pfColorMap(d.channels.map(c=>({id:c.id,color:c.color})));
+  const tyCols=pfColorMap(d.asset_types.map(t=>({id:t.id,color:t.color})));
+  $('#cfgChList').innerHTML=d.channels.map((c,i)=>`
+    <div class="cfg-li">
+      <span class="swatch" style="background:${chCols.get(c.id)}"></span>
+      <span class="nmx">${pfEsc(c.name)}</span>
+      <span class="id">${pfEsc(c.id)}</span>
+      <button class="edit" data-edit-ch="${i}" aria-label="修改${pfEsc(c.name)}名称" title="修改渠道名称">✎</button>
+      <button class="del" data-del-ch="${i}" aria-label="删除${pfEsc(c.name)}" title="删除渠道（会级联删除其持仓）">×</button>
+    </div>`).join('')||'<div class="cfg-hint">还没有渠道，先新增一个。</div>';
+
+  $('#cfgTyList').innerHTML=d.asset_types.map((t,i)=>`
+    <div class="cfg-li">
+      <span class="swatch" style="background:${tyCols.get(t.id)}"></span>
+      <span class="nmx">${pfEsc(t.name)}</span>
+      <span class="id">${pfEsc(t.id)}</span>
+      <button class="edit" data-edit-ty="${i}" aria-label="修改${pfEsc(t.name)}名称" title="修改资产类型名称">✎</button>
+      <button class="del" data-del-ty="${i}" ${d.asset_types.length<=1?'disabled title="至少保留一个类型"':`title="删除类型（会级联删除其持仓）"`} aria-label="删除${pfEsc(t.name)}">×</button>
+    </div>`).join('');
+
+  $('#cfgCurrency').value=d.display_currency;
+  $('#cfgRate').value=d.usd_cny_rate??'';
+
+  $('#cfgRows').innerHTML=d.holdings.map((h,i)=>{
+    const ch=d.channels.find(c=>c.id===h.channel_id);
+    return `<tr>
+      <td><span class="tname">${pfEsc(h.symbol)}</span><span class="tsub">${pfEsc(ch?.name||h.channel_id)}</span></td>
+      <td><select class="cfg-select" data-h-type="${i}" aria-label="资产类型">
+        ${d.asset_types.map(t=>`<option value="${pfEsc(t.id)}"${t.id===h.asset_type_id?' selected':''}>${pfEsc(t.name)}</option>`).join('')}
+      </select></td>
+      <td style="text-align:right"><input class="cfg-input num" data-h-qty="${i}" value="${h.quantity}" inputmode="decimal" style="height:30px;text-align:right" aria-label="数量"></td>
+      <td><select class="cfg-select" data-h-cat="${i}" aria-label="行情分类">
+        ${Object.entries(PF_CAT_LABEL).map(([k,v])=>`<option value="${k}"${k===h.quote_category?' selected':''}>${v}</option>`).join('')}
+      </select></td>
+      <td><button class="del" data-del-h="${i}" aria-label="删除持仓" style="width:22px;height:22px;border-radius:5px;color:var(--ink3)">×</button></td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="5" class="cfg-hint">还没有持仓，点「＋ 新增持仓」添加。</td></tr>';
+
+  renderCfgFoot();
+}
+
+function cfgNextColor(){
+  const n=cfgDraft.channels.length+cfgDraft.asset_types.length;
+  return PF_PALETTE[n%PF_PALETTE.length];
+}
+// 由名称派生 id（与后端 slugify 同口径，兼容中文）
+function cfgSlug(name){
+  return String(name||'').trim().toLowerCase()
+    .replace(/\s+/g,'-').replace(/[^\p{L}\p{N}._-]+/gu,'-')
+    .replace(/^-+|-+$/g,'').slice(0,64);
+}
+
+$('#cfgAddCh')?.addEventListener('click',()=>{
+  const name=prompt('新渠道名称（如「老虎证券」）');
+  if(name==null)return;
+  const n=name.trim(); if(!n)return;
+  const id=cfgSlug(n);
+  if(!id){toast('无法从该名称生成 ID');return}
+  if(cfgDraft.channels.some(c=>c.id===id)){toast('渠道 ID 已存在：'+id);return}
+  if(cfgDraft.channels.some(c=>c.name===n)){toast('渠道名称已存在：'+n);return}
+  cfgDraft.channels.push({id,name:n,color:cfgNextColor()});
+  cfgTouch(); renderCfg();
+});
+$('#cfgAddTy')?.addEventListener('click',()=>{
+  const name=prompt('新资产类型名称（如「港股资产」）');
+  if(name==null)return;
+  const n=name.trim(); if(!n)return;
+  const id=cfgSlug(n);
+  if(!id){toast('无法从该名称生成 ID');return}
+  if(cfgDraft.asset_types.some(t=>t.id===id)){toast('类型 ID 已存在：'+id);return}
+  if(cfgDraft.asset_types.some(t=>t.name===n)){toast('类型名称已存在：'+n);return}
+  cfgDraft.asset_types.push({id,name:n,color:cfgNextColor()});
+  cfgTouch(); renderCfg();
+});
+$('#cfgAddH')?.addEventListener('click',()=>{
+  if(!cfgDraft.channels.length){toast('请先新增一个渠道');return}
+  const chId=prompt('选择渠道（填渠道 id）：\n'+cfgDraft.channels.map(c=>`${c.id} = ${c.name}`).join('\n')
+    +'\n\n也可直接输入渠道名称');
+  if(chId==null)return;
+  const q=chId.trim();
+  const ch=cfgDraft.channels.find(c=>c.id===q)||cfgDraft.channels.find(c=>c.name===q);
+  if(!ch){toast('找不到渠道：'+q);return}
+  const tyId=prompt('选择资产类型（填类型 id 或名称）：\n'+cfgDraft.asset_types.map(t=>`${t.id} = ${t.name}`).join('\n'));
+  if(tyId==null)return;
+  const q2=tyId.trim();
+  const ty=cfgDraft.asset_types.find(t=>t.id===q2)||cfgDraft.asset_types.find(t=>t.name===q2);
+  if(!ty){toast('找不到资产类型：'+q2);return}
+  const cat=prompt('行情分类（us / hk / a_share / crypto / index）：','us');
+  if(cat==null)return;
+  const c=cat.trim();
+  if(!PF_CAT_LABEL[c]){toast('不支持的行情分类：'+c);return}
+  const sym=prompt('代码（如 AAPL、0700、600519、BTC）：');
+  if(sym==null)return;
+  const sy=sym.trim().toUpperCase();
+  if(!sy){toast('代码不能为空');return}
+  const qty=prompt('数量（必须 > 0）：');
+  if(qty==null)return;
+  const n=Number(qty);
+  if(!Number.isFinite(n)||n<=0){toast('数量必须是大于 0 的有限数');return}
+  cfgDraft.holdings.push({
+    id:`h-${Math.random().toString(36).slice(2,10)}`,
+    channel_id:ch.id, asset_type_id:ty.id, symbol:sy, quote_category:c, quantity:n,
+  });
+  cfgTouch(); renderCfg();
+});
+
+// 草稿内的事件委托
+$('#cfgOverlay')?.addEventListener('click',e=>{
+  const ec=e.target.closest('[data-edit-ch]');
+  if(ec){
+    const i=Number(ec.dataset.editCh);
+    const ch=cfgDraft.channels[i];
+    const name=prompt('修改渠道名称：',ch.name);
+    if(name==null)return;
+    const n=name.trim();
+    if(!n){toast('渠道名称不能为空');return}
+    if(cfgDraft.channels.some((c,j)=>j!==i&&c.name===n)){toast('渠道名称已存在：'+n);return}
+    if(n===ch.name)return;
+    // ID 是持仓关联键；重命名仅改变显示名称，不得改写 ID。
+    ch.name=n;
+    cfgTouch(); renderCfg(); return;
+  }
+  const et=e.target.closest('[data-edit-ty]');
+  if(et){
+    const i=Number(et.dataset.editTy);
+    const ty=cfgDraft.asset_types[i];
+    const name=prompt('修改资产类型名称：',ty.name);
+    if(name==null)return;
+    const n=name.trim();
+    if(!n){toast('资产类型名称不能为空');return}
+    if(cfgDraft.asset_types.some((t,j)=>j!==i&&t.name===n)){toast('资产类型名称已存在：'+n);return}
+    if(n===ty.name)return;
+    // ID 是持仓关联键；重命名仅改变显示名称，不得改写 ID。
+    ty.name=n;
+    cfgTouch(); renderCfg(); return;
+  }
+  const dc=e.target.closest('[data-del-ch]');
+  if(dc){
+    const i=Number(dc.dataset.delCh);
+    const ch=cfgDraft.channels[i];
+    const n=cfgDraft.holdings.filter(h=>h.channel_id===ch.id).length;
+    if(n&&!confirm(`删除渠道「${ch.name}」会同时删除其下 ${n} 笔持仓，确定？`))return;
+    // 级联删除其持仓，与后端外键语义保持一致，避免保存时才报错
+    cfgDraft.channels.splice(i,1);
+    cfgDraft.holdings=cfgDraft.holdings.filter(h=>h.channel_id!==ch.id);
+    cfgTouch(); renderCfg(); return;
+  }
+  const dt=e.target.closest('[data-del-ty]');
+  if(dt){
+    if(cfgDraft.asset_types.length<=1){toast('至少保留一个资产类型');return}
+    const i=Number(dt.dataset.delTy);
+    const ty=cfgDraft.asset_types[i];
+    const n=cfgDraft.holdings.filter(h=>h.asset_type_id===ty.id).length;
+    if(n&&!confirm(`删除类型「${ty.name}」会同时删除其下 ${n} 笔持仓，确定？`))return;
+    cfgDraft.asset_types.splice(i,1);
+    cfgDraft.holdings=cfgDraft.holdings.filter(h=>h.asset_type_id!==ty.id);
+    cfgTouch(); renderCfg(); return;
+  }
+  const dh=e.target.closest('[data-del-h]');
+  if(dh){
+    cfgDraft.holdings.splice(Number(dh.dataset.delH),1);
+    cfgTouch(); renderCfg(); return;
+  }
+});
+$('#cfgOverlay')?.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.hType!=null){cfgDraft.holdings[Number(t.dataset.hType)].asset_type_id=t.value;cfgTouch();}
+  else if(t.dataset.hCat!=null){cfgDraft.holdings[Number(t.dataset.hCat)].quote_category=t.value;cfgTouch();}
+});
+$('#cfgOverlay')?.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset.hQty!=null){
+    const n=Number(String(t.value).trim());
+    if(Number.isFinite(n)&&n>0)cfgDraft.holdings[Number(t.dataset.hQty)].quantity=n;
+    cfgTouch();
+  }
+});
+$('#cfgCurrency')?.addEventListener('change',e=>{cfgDraft.display_currency=e.target.value;cfgTouch()});
+$('#cfgRate')?.addEventListener('input',e=>{
+  const n=Number(String(e.target.value).trim());
+  if(Number.isFinite(n)&&n>0)cfgDraft.usd_cny_rate=n;
+  cfgTouch();
+});
+// 冲突后提供「重新载入」：明确丢弃本地草稿，拿服务端最新配置
+$('#cfgReload')?.addEventListener('click',async()=>{
+  try{
+    const cfg=await loadPortfolioConfig();
+    cfgDraft={
+      channels:cfgDeepCopy(cfg.channels), asset_types:cfgDeepCopy(cfg.asset_types),
+      holdings:cfgDeepCopy(cfg.holdings),
+      display_currency:cfg.display_currency, usd_cny_rate:cfg.usd_cny_rate,
+    };
+    cfgBaseVersion=cfg.version;
+    cfgDirty=false;
+    $('#cfgReloadWrap').hidden=true;
+    renderCfg();
+    toast('已载入 v'+cfg.version);
+  }catch(e){ toast(e.message||'重新载入失败'); }
+});
+$('#cfgClose')?.addEventListener('click',closeConfig);
+$('#cfgCancel')?.addEventListener('click',closeConfig);
+$('#cfgOverlay')?.addEventListener('click',e=>{ if(e.target===$('#cfgOverlay'))closeConfig(); });
+
+$('#cfgSave')?.addEventListener('click',async()=>{
+  const btn=$('#cfgSave');
+  btn.disabled=true; $('#cfgErr').hidden=true;
+  try{
+    // 一次原子写：整份配置一起提交，带并发版本
+    const res=await api('/api/v1/portfolio/config',{method:'PUT',body:{
+      channels:cfgDraft.channels.map(c=>({id:c.id,name:c.name,color:c.color})),
+      asset_types:cfgDraft.asset_types.map(t=>({id:t.id,name:t.name,color:t.color})),
+      holdings:cfgDraft.holdings.map(h=>({
+        id:h.id,channel_id:h.channel_id,asset_type_id:h.asset_type_id,
+        symbol:h.symbol,quote_category:h.quote_category,quantity:h.quantity,
+      })),
+      display_currency:cfgDraft.display_currency,
+      usd_cny_rate:cfgDraft.usd_cny_rate,
+      expected_version:cfgBaseVersion,
+    }});
+    cfgBaseVersion=res.version;
+    closeConfig();
+    toast('配置已保存');
+    // 配置变了，报价缓存里的标的可能也变了 → 强制刷新一次
+    await loadPortfolio({force:true});
+  }catch(e){
+    if(e.code==='VERSION_CONFLICT'){
+      // 冲突：保留草稿，提示用户刷新后重试（绝不静默覆盖别人的修改）
+      const cur=e.details?.current_version;
+      $('#cfgErr').innerHTML=`保存失败：配置已被其他客户端修改（当前版本 ${pfEsc(cur)}，你的草稿基于 ${pfEsc(cfgBaseVersion)}）。`
+        +`<br>你的草稿已保留。请点「重新载入」拿到最新配置后重试，或再次保存以覆盖。`;
+      $('#cfgErr').hidden=false;
+      $('#cfgReloadWrap').hidden=false;
+    }else{
+      $('#cfgErr').textContent=`保存失败：${e.message||'未知错误'}`;
+      $('#cfgErr').hidden=false;
+    }
+  }finally{
+    btn.disabled=false;
+  }
+});
+
+/* ── 一级 tab 切换 ── */
+function setView(v){
+  const isAsset=v==='asset';
+  const isCalendar=v==='calendar';
+  if(!isAsset&&pfDetailKey)closePfDetail();
+  $('#assetView').hidden=!isAsset;
+  $('#calendarView').hidden=!isCalendar;
+  $('#watchView').hidden=isAsset||isCalendar;
+  // 自选的「新增资产」按钮只在自选页有意义
+  // 用包装层的 hidden 而不是按钮的 display：与 designs 的 .cats-add[hidden] 一致
+  $('#watchActions').hidden=isAsset||isCalendar;
+  $('#refreshBtn').title=isCalendar?'刷新财经日历':(isAsset?'刷新持仓行情':'刷新行情');
+  for(const b of document.querySelectorAll('.toptab')){
+    const on=b.dataset.view===v;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-selected',on?'true':'false');
+  }
+  document.body.classList.toggle('asset-mode',isAsset);
+  try{localStorage.setItem('invest_view',v)}catch{}
+  return isAsset;
+}
+$('#topTabs').addEventListener('click',e=>{
+  const b=e.target.closest('.toptab'); if(!b)return;
+  if(setView(b.dataset.view))loadPortfolio();
+  else if(b.dataset.view==='calendar')loadCalendar();
+});
+$('#calendarGrid').addEventListener('click',e=>{
+  const day=e.target.closest('[data-calendar-day]');if(!day)return;
+  calendarSelected=day.dataset.calendarDay;calendarCursor=calendarDate(calendarSelected);renderCalendar();
+  $('#calendarGrid').classList.remove('month-open');
+  $('#calendarMonthToggle').setAttribute('aria-expanded','false');
+});
+$('#calendarMonthToggle').addEventListener('click',()=>{
+  const grid=$('#calendarGrid'),open=grid.classList.toggle('month-open');
+  $('#calendarMonthToggle').setAttribute('aria-expanded',open?'true':'false');
+});
+let calendarTouchX=null;
+$('#calendarGrid').addEventListener('touchstart',e=>{calendarTouchX=e.changedTouches[0]?.clientX??null},{passive:true});
+$('#calendarGrid').addEventListener('touchend',e=>{
+  const x=e.changedTouches[0]?.clientX;if(calendarTouchX===null||x===undefined)return;
+  const delta=x-calendarTouchX;calendarTouchX=null;if(Math.abs(delta)<42)return;
+  const next=calendarDate(calendarSelected||calendarToday());next.setDate(next.getDate()+(delta<0?7:-7));
+  calendarSelected=calendarKey(next);calendarCursor=next;renderCalendar();
+},{passive:true});
+function openCalendarSettings(){
+  $('#calendarKey').value='';
+  $('#calendarKeyHint').textContent='密钥只在服务端环境变量中保存。请在 .env 中设置后重启服务。';
+  $('#calendarSettings').classList.add('open');
+}
+function closeCalendarSettings(){$('#calendarSettings').classList.remove('open')}
+$('#calendarConfigOpen').addEventListener('click',openCalendarSettings);
+$('#calendarSettingsClose').addEventListener('click',closeCalendarSettings);
+$('#calendarSettings').addEventListener('click',e=>{if(e.target===$('#calendarSettings'))closeCalendarSettings()});
+
+// 币种切换：只改展示换算，不影响服务端 USD 口径
+document.querySelector('.curseg')?.addEventListener('click',async e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  pfForceCurrency=b.dataset.cur;
+  renderAssetView();
+  // 顺手记住偏好；失败不影响展示
+  try{
+    const config=pfConfig||await loadPortfolioConfig();
+    const r=await api('/api/v1/portfolio/config',{method:'PUT',body:{
+      channels:config.channels, asset_types:config.asset_types, holdings:config.holdings,
+      display_currency:b.dataset.cur, usd_cny_rate:config.usd_cny_rate,
+    }});
+    config.display_currency=b.dataset.cur;config.version=r.version;
+  }catch{} // 保存偏好失败不影响当前页面的即时切换
+});
+document.querySelector('.ov-typeswitch')?.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  pfGroup=b.dataset.group;
+  renderPfTable();
+  // 重画列表后行会重建，选中态与面板都要重新对齐；
+  // renderPfDetail() 内部已经负责把 K 线画回来，这里不用再管。
+  if(pfDetailKey)renderPfDetail();
+});
+$('#configOpen')?.addEventListener('click',openConfig);
+$('#pfDetailOverlay').addEventListener('click',closePfDetail);
+
+// 资产列表点击行 → 打开右侧详情（与自选页交互一致：点同一行收起）
+$('#pfTable')?.addEventListener('click',e=>{
+  const r=e.target.closest('.arow[data-pf-cat]'); if(!r)return;
+  const cat=r.dataset.pfCat, sym=r.dataset.pfSym, rowId=r.dataset.pfRow||'';
+  // 收起只在「点的是同一行」时发生。
+  // 按渠道视图里同一标的会有多行（BMNR 跨 3 个渠道就是 3 行），
+  // 若只比 cat|sym，点另一行会被误判成「再点一次」而把面板关掉。
+  if(pfDetailKey===`${cat}|${sym}`&&pfDetailRowId===rowId)return closePfDetail();
+  if(isMobile)pfDetailReturnFocus=r;
+  openPfDetail(cat,sym,rowId);
+});
+$('#pfTable')?.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  const r=e.target.closest('.arow[data-pf-cat]'); if(!r)return;
+  e.preventDefault();
+  openPfDetail(r.dataset.pfCat,r.dataset.pfSym,r.dataset.pfRow||'');
+});
+
+// 刷新按钮：资产页刷新持仓行情，自选页保持原行为（原监听在别处，这里用捕获阶段判断）
+$('#refreshBtn').addEventListener('click',e=>{
+  if(!$('#calendarView').hidden){
+    e.stopImmediatePropagation();
+    loadCalendar({force:true});
+    return;
+  }
+  if($('#assetView').hidden)return;   // 自选页：交给原有处理
+  e.stopImmediatePropagation();
+  loadPortfolio({force:true});
+},true);
+
+/* ================= 启动 ================= */
+$('#inCat').innerHTML=CATS.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+renderAll();
+boot();
+// 恢复上次的一级 tab；默认「自选」，只有真正切到资产才拉估值（不拖慢首屏）
+try{
+  const v=localStorage.getItem('invest_view');
+  if(v==='asset'){ setView('asset'); loadPortfolio(); }
+  else if(v==='calendar'){ setView('calendar'); loadCalendar(); }
+}catch{}
+</script>
+</body>
+</html>
