@@ -38,6 +38,8 @@ export const config = {
   portfolioQuoteCacheMs: num('PORTFOLIO_QUOTE_CACHE_MS', 60 * 1000),
   // 汇率缓存：默认 6 小时。过期后会先返回旧值并在后台更新。
   fxCacheMs: num('INVEST_FX_CACHE_MS', 6 * 60 * 60 * 1000),
+  // 开源版新库默认写入可见的演示数据；设为 0 可关闭。已有数据绝不受影响。
+  seedDemoData: env.INVEST_SEED_DEMO_DATA !== '0',
 };
 
 // 有没有任何可用凭据。都没有时 v1 接口整体拒绝（只读/停工模式）。

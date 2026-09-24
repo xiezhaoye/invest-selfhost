@@ -797,6 +797,7 @@ tr.drop-mark.mark-below td{box-shadow:inset 0 -2.5px 0 var(--accent)}
   -webkit-tap-highlight-color:transparent;
 }
 .mrow:active{background:#f3f6fb}
+.mrow.dragging{opacity:.42;background:#f0f4fd}.mrow.drop-mark.mark-above{box-shadow:inset 0 2.5px 0 var(--accent)}.mrow.drop-mark.mark-below{box-shadow:inset 0 -2.5px 0 var(--accent)}
 .mname{font-size:19px; font-weight:700; line-height:1.25; letter-spacing:-.01em}
 .mstar{color:#e8930c; font-size:15px; margin-right:3px}
 .mcode{display:flex; gap:7px; align-items:center; margin-top:3px}
@@ -880,7 +881,7 @@ tr.drop-mark.mark-below td{box-shadow:inset 0 -2.5px 0 var(--accent)}
       <span class="navsep"></span>
     </div>
     <nav class="toptabs" id="topTabs" role="tablist" aria-label="一级导航">
-      <button class="toptab on" data-view="watch" id="tabWatch" role="tab" aria-selected="true">自选</button>
+      <button class="toptab on" data-view="watch" id="tabWatch" role="tab" aria-selected="true">行情</button>
       <button class="toptab" data-view="asset" id="tabAsset" role="tab" aria-selected="false">资产</button>
       <button class="toptab" data-view="calendar" id="tabCalendar" role="tab" aria-selected="false">日历</button>
     </nav>
@@ -3018,6 +3019,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)flushTagOrd
 window.addEventListener('pagehide',()=>{flushTagOrder()});
 $('#main').addEventListener('click',e=>{
   if(isMobile){
+    if(Date.now()<mobileSortSuppressClickUntil)return;
     const row=e.target.closest('.mrow[data-id]');
     if(row)openSheet(row.dataset.id);
     return;
@@ -3053,6 +3055,59 @@ $('#sheetChart').addEventListener('click',e=>{
    之前标星页的 bug 就是这里：页签是跨市场的，却调用 per-category 接口，
    而那个接口要求 ids 恰好是该分类全集 → 必然 400。 */
 let dragId=null;
+let mobileSortTimer=null;
+let mobileSortActive=false;
+let mobileSortId=null;
+let mobileSortTarget=null;
+let mobileSortSuppressClickUntil=0;
+let mobileSortStart=null;
+const MOBILE_SORT_HOLD_MS=360;
+const MOBILE_SORT_MOVE_PX=9;
+
+function clearMobileSort(){
+  if(mobileSortTimer){clearTimeout(mobileSortTimer);mobileSortTimer=null}
+  document.querySelectorAll('#main .mrow.dragging,#main .mrow.drop-mark').forEach(row=>row.classList.remove('dragging','drop-mark','mark-above','mark-below'));
+  mobileSortActive=false;mobileSortId=null;mobileSortTarget=null;mobileSortStart=null;
+}
+
+// 移动端没有原生 HTML5 拖拽：长按一行后再拖动，松手时复用桌面端的重排与持久化逻辑。
+// 正常轻触和上下滚动不会进入该分支，仍然打开资产详情或滚动页面。
+$('#main').addEventListener('touchstart',e=>{
+  if(!isMobile||e.touches.length!==1)return;
+  const row=e.target.closest('.mrow[data-id]');if(!row)return;
+  const touch=e.touches[0];
+  mobileSortStart={x:touch.clientX,y:touch.clientY,row,id:row.dataset.id};
+  mobileSortTimer=setTimeout(()=>{
+    if(!mobileSortStart)return;
+    mobileSortActive=true;mobileSortId=mobileSortStart.id;
+    mobileSortStart.row.classList.add('dragging');
+  },MOBILE_SORT_HOLD_MS);
+},{passive:true});
+$('#main').addEventListener('touchmove',e=>{
+  if(!isMobile||e.touches.length!==1||!mobileSortStart)return;
+  const touch=e.touches[0];
+  if(!mobileSortActive){
+    if(Math.hypot(touch.clientX-mobileSortStart.x,touch.clientY-mobileSortStart.y)>MOBILE_SORT_MOVE_PX)clearMobileSort();
+    return;
+  }
+  e.preventDefault();
+  document.querySelectorAll('#main .mrow.drop-mark').forEach(row=>row.classList.remove('drop-mark','mark-above','mark-below'));
+  const target=document.elementFromPoint(touch.clientX,touch.clientY)?.closest('#main .mrow[data-id]');
+  if(!target||target.dataset.id===mobileSortId){mobileSortTarget=null;return}
+  const rect=target.getBoundingClientRect();
+  mobileSortTarget={id:target.dataset.id,below:(touch.clientY-rect.top)>rect.height/2};
+  target.classList.add('drop-mark',mobileSortTarget.below?'mark-below':'mark-above');
+},{passive:false});
+const endMobileSort=()=>{
+  if(!mobileSortStart)return;
+  const moving=mobileSortActive, dragId=mobileSortId, target=mobileSortTarget;
+  clearMobileSort();
+  if(!moving)return;
+  mobileSortSuppressClickUntil=Date.now()+450;
+  if(dragId&&target)dropReorder(dragId,target.id,target.below);
+};
+$('#main').addEventListener('touchend',endMobileSort,{passive:true});
+$('#main').addEventListener('touchcancel',clearMobileSort,{passive:true});
 /** 当前页签对应的「拖拽作用域」：标签页返回 {kind:'tag',tagId}，分类页返回 {kind:'cat',cat} */
 function dragScope(){
   if(activeCat==='star')return {kind:'tag',tagId:STAR};

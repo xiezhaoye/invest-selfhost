@@ -15,6 +15,7 @@ import { createSearchAdapter } from './quotes/search.js';
 import { createFxService } from './portfolio/fx.js';
 import { createPortfolioQuoteService } from './portfolio/quote-service.js';
 import { createJinshiCalendarService } from './jinshi-calendar.js';
+import { seedDemoData } from './demo-data.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -28,7 +29,11 @@ const MIME = {
 };
 
 export function createServer(opts = {}) {
+  const ownsDb = !opts.db;
   const db = opts.db || openDb(config.dbPath);
+  if (ownsDb && config.seedDemoData && seedDemoData(db)) {
+    console.log('[invest] 已写入开源版演示数据；已有用户数据不会被覆盖。');
+  }
   const adapters = opts.adapters || createQuoteAdapters(opts.adapterOpts || {});
   const refreshService = opts.refreshService || createRefreshService({
     db,
