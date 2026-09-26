@@ -6,7 +6,7 @@ const DEMO_ASSETS = [
   { id: 'demo-aapl', category: 'us', symbol: 'AAPL', normalized: 'AAPL', name: 'Apple（示例）', starred: 1, sort: 0 },
   { id: 'demo-nvda', category: 'us', symbol: 'NVDA', normalized: 'NVDA', name: 'NVIDIA（示例）', starred: 1, sort: 1 },
   { id: 'demo-btc', category: 'crypto', symbol: 'BTC', normalized: 'BTC', name: '比特币（示例）', starred: 0, sort: 0 },
-  { id: 'demo-pab', category: 'a_share', symbol: '000001', normalized: '000001', name: '平安银行（示例）', starred: 0, sort: 0 },
+  { id: 'demo-pab', category: 'a_share', symbol: '000001', normalized: '000001.SZ', name: '平安银行（示例）', starred: 0, sort: 0 },
 ];
 
 const DEMO_QUOTES = [

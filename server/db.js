@@ -320,6 +320,20 @@ const MIGRATIONS = [
       FROM watchlist_assets WHERE is_starred = 1;
     `,
   },
+  {
+    // 2026-09-26：修正演示数据。首版种子把平安银行的 normalized_symbol 写成了 '000001'，
+    // 行情源需要 '000001.SZ'，导致这条示例永远拉不到行情。只修演示那一行；
+    // 若用户已自行添加过同一代码（唯一索引冲突），就不动它。
+    version: 9,
+    up: `
+      UPDATE watchlist_assets SET normalized_symbol = '000001.SZ'
+      WHERE id = 'demo-pab' AND category = 'a_share' AND normalized_symbol = '000001'
+        AND NOT EXISTS (
+          SELECT 1 FROM watchlist_assets
+          WHERE category = 'a_share' AND normalized_symbol = '000001.SZ'
+        );
+    `,
+  },
 ];
 
 export function openDb(dbPath) {
