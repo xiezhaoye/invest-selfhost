@@ -20,8 +20,8 @@ Invest 是一个给个人查看资产价格、管理资产总额的小工具。�
 需要 Node.js 22.5 或更高版本。
 
 ```bash
-git clone https://github.com/xiezhaoye/invest.git
-cd invest
+git clone https://github.com/xiezhaoye/invest-selfhost.git
+cd invest-selfhost
 cp .env.example .env
 npm ci
 npm run start:local
